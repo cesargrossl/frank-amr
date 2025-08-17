@@ -1,188 +1,192 @@
 #!/usr/bin/env python3
-import time, sys, struct, serial
-import gpiod
-from math import fmod
+import time
+import sys
 
-# ==== CONFIGURAÇÕES ====
-PORT = "/dev/ttyUSB0"
-BAUD = 460800
-TIMEOUT = 1.0
+try:
+    import gpiod
+except ImportError:
+    raise SystemExit("Instale: sudo apt update && sudo apt install -y python3-libgpiod gpiod")
 
-# Setor frontal (ajuste conforme a montagem do LiDAR no robô)
-FRONT_CENTER_DEG = 0.0    # defina 0° como a "frente" do robô
-FRONT_HALF_WIDTH = 15.0   # setor ±15°
-DIST_THRESHOLD_M = 1.0    # obstáculo até 1,0 m
-HITS_REQUIRED = 3         # nº mínimo de pontos dentro do setor por volta
-PULSE_MS = 300            # tempo do pulso no relé
-COOLDOWN_S = 0.7          # antichatter
+# ================== CONFIGURAÇÕES ==================
+CHIP_NAME     = "gpiochip0"  # cheque com `gpioinfo`
+IN7           = 17           # BCM 17 (físico 11) -> mapeie p/ "AÇÃO A" (ex.: FRENTE ou ESQ)
+IN8           = 27           # BCM 27 (físico 13) -> mapeie p/ "AÇÃO B" (ex.: RÉ ou DIR)
+ACTIVE_LOW    = True         # a maioria dos módulos de relé é ativo em LOW
 
-# GPIO / Relés (assumindo módulos de relé ativos em nível BAIXO)
-CHIP_NAME = "gpiochip0"
-IN7_GPIO = 17  # pino BCM 17 (físico 11)
-IN8_GPIO = 27  # pino BCM 27 (físico 13)
-ACTIVE_LOW = True
+# Mapeamento semântico (troque os nomes conforme seu uso)
+ACAO_A_NOME   = "FRENTE"     # o que o IN7 faz no seu controle
+ACAO_B_NOME   = "RÉ"         # o que o IN8 faz no seu controle
 
-# ==== PROTOCOLO RPLIDAR (comandos principais) ====
-A5 = 0xA5
-CMD = {
-    "STOP":        0x25,
-    "RESET":       0x40,
-    "SCAN":        0x20,
-    "GET_INFO":    0x50,
-    "GET_HEALTH":  0x52,
-}
+# Estilo de acionamento:
+MODO_PULSO    = True         # True = dá um toque curto; False = manter pressionado enquanto chamar hold_on/hold_off
+PULSO_MS      = 250          # duração do pulso em milissegundos
+ANTICHATTER_S = 0.2          # tempo mínimo entre comandos para não “treme-ligar”
+# ===================================================
 
-def send_cmd(ser, cmd, payload=b""):
-    if payload:
-        pkt = bytes([A5, cmd, len(payload)]) + payload
-        chk = 0
-        for b in pkt:
-            chk ^= b
-        ser.write(pkt + bytes([chk]))
-    else:
-        ser.write(bytes([A5, cmd]))
 
-def read_descriptor(ser):
-    hdr = ser.read(2)
-    if hdr != b"\xA5\x5A":
-        return None
-    rest = ser.read(5)
-    if len(rest) != 5:
-        return None
-    length_mode = rest[0] | (rest[1]<<8) | (rest[2]<<16) | (rest[3]<<24)
-    data_len = length_mode & 0x3FFFFFFF
-    send_mode = (length_mode >> 30) & 0x3
-    data_type = rest[4]
-    return data_len, send_mode, data_type
+# ====== BACKEND gpiod (suporta v2 e v1) ======
+def _new_request_v2(chip, pins):
+    off = gpiod.LineValue.HIGH if ACTIVE_LOW else gpiod.LineValue.LOW
+    off_settings = gpiod.LineSettings(
+        direction=gpiod.LineDirection.OUTPUT,
+        output_value=off,
+        bias=(gpiod.LineBias.PULL_UP if ACTIVE_LOW else gpiod.LineBias.DISABLED)
+    )
+    req = chip.request_lines(consumer="reles", config={(p,): off_settings for p in pins})
+    return req
 
-def decode_node_5b(pkt):
-    b0,b1,b2,b3,b4 = pkt
-    # b1 bit0 deve ser 1 (check)
-    if (b1 & 0x01) == 0:
-        return None
-    start_flag     =  b0 & 0x01
-    quality        =  b0 >> 2
-    angle_q6 = ((b2 << 7) | (b1 >> 1)) & 0xFFFF
-    dist_q2  = (b4 << 8) | b3
-    angle_deg = angle_q6 / 64.0
-    dist_m = (dist_q2 / 4.0) / 1000.0
-    return start_flag, angle_deg, dist_m, quality
+def _set_value_v2(req, pin, value):
+    # value=True->ON, False->OFF
+    v_on  = gpiod.LineValue.LOW  if ACTIVE_LOW else gpiod.LineValue.HIGH
+    v_off = gpiod.LineValue.HIGH if ACTIVE_LOW else gpiod.LineValue.LOW
+    req.set_value(pin, v_on if value else v_off)
 
-def norm_signed_deg(a):
-    """Converte ângulo para faixa [-180, +180)."""
-    a = fmod(a + 180.0, 360.0)
-    if a < 0: a += 360.0
-    return a - 180.0
+def _new_request_v1(chip, pins):
+    lines = []
+    off_val = 1 if ACTIVE_LOW else 0
+    for p in pins:
+        line = chip.get_line(p)
+        line.request(consumer="reles", type=gpiod.LINE_REQ_DIR_OUT, default_val=off_val)
+        lines.append(line)
+    return lines  # lista de Line
 
-def in_front_sector(angle_deg, center=FRONT_CENTER_DEG, half=FRONT_HALF_WIDTH):
-    # converte ambos p/ signed e verifica se está dentro de ±half
-    a = norm_signed_deg(angle_deg - center)
-    return (-half) <= a <= (half), a  # retorna também o ângulo relativo
-
-class Relays:
-    def __init__(self, chip_name, pins, active_low=True):
-        self.chip = gpiod.Chip(chip_name)
-        self.active_low = active_low
-        cfg = {}
-        for p in pins:
-            init_val = gpiod.LineValue.HIGH if active_low else gpiod.LineValue.LOW
-            cfg[(p,)] = gpiod.LineSettings(
-                direction=gpiod.LineDirection.OUTPUT,
-                output_value=init_val
-            )
-        self.req = self.chip.request_lines(consumer="lidar_relays", config=cfg)
-        self.pin_to_offset = {p:i for i,p in enumerate(pins)}
-        self.pins = pins
-
-    def pulse(self, pin, ms=PULSE_MS):
-        idx = self.pins.index(pin)
-        on  = gpiod.LineValue.LOW if self.active_low else gpiod.LineValue.HIGH
-        off = gpiod.LineValue.HIGH if self.active_low else gpiod.LineValue.LOW
-        # liga
-        vals = [self.req.get_value(p) for p in self.pins]
-        vals[idx] = on
-        self.req.set_values(self.pins, vals)
-        time.sleep(ms/1000.0)
-        # desliga
-        vals[idx] = off
-        self.req.set_values(self.pins, vals)
-
-def main():
-    relays = Relays(CHIP_NAME, [IN7_GPIO, IN8_GPIO], ACTIVE_LOW)
-    last_trigger = 0.0
-
-    with serial.Serial(PORT, BAUD, timeout=TIMEOUT) as ser:
-        ser.reset_input_buffer()
-        ser.reset_output_buffer()
-
-        # opcional: consulta saúde
-        try:
-            send_cmd(ser, CMD["GET_HEALTH"])
-            desc = read_descriptor(ser)
-            if desc:
-                data_len, _, _ = desc
-                ser.read(data_len)
-        except Exception:
-            pass
-
-        # inicia SCAN legado (5 bytes/nó)
-        send_cmd(ser, CMD["SCAN"])
-        desc = read_descriptor(ser)
-        if not desc:
-            print("Falha ao receber descriptor do SCAN.", file=sys.stderr)
+def _set_value_v1(lines, pin, value):
+    on_val  = 0 if ACTIVE_LOW else 1
+    off_val = 1 if ACTIVE_LOW else 0
+    for ln in lines:
+        if ln.offset() == pin:
+            ln.set_value(on_val if value else off_val)
             return
 
-        # agregadores por volta
-        hits_angles_rel = []
-        hits_count = 0
-        last_start = False
-        print("Rodando… Ctrl+C para sair.")
+class Relays:
+    def __init__(self, chip_name, pins):
+        self.chip = gpiod.Chip(chip_name)
+        self.pins = pins
+        self.last_cmd_ts = 0.0
+        self.v2 = hasattr(gpiod, "LineSettings")
+        self.req = _new_request_v2(self.chip, pins) if self.v2 else _new_request_v1(self.chip, pins)
 
+    def _set(self, pin, on):
+        if (time.time() - self.last_cmd_ts) < ANTICHATTER_S and MODO_PULSO:
+            # evita múltiplos toques seguidos muito rápidos em modo pulso
+            time.sleep(ANTICHATTER_S)
+        if self.v2:
+            _set_value_v2(self.req, pin, on)
+        else:
+            _set_value_v1(self.req, pin, on)
+        self.last_cmd_ts = time.time()
+
+    def pulse(self, pin, ms=PULSO_MS):
+        self._set(pin, True)
+        time.sleep(ms/1000.0)
+        self._set(pin, False)
+
+    def hold_on(self, pin):
+        self._set(pin, True)
+
+    def hold_off(self, pin):
+        self._set(pin, False)
+
+    def all_off(self):
+        for p in self.pins:
+            self._set(p, False)
+
+    def close(self):
         try:
-            while True:
-                pkt = ser.read(5)
-                if len(pkt) != 5:
-                    continue
-                node = decode_node_5b(pkt)
-                if not node:
-                    continue
-                start, ang_abs, dist_m, q = node
-
-                # detecta início de nova volta
-                if start and not last_start:
-                    # fim da volta anterior → decide se aciona
-                    now = time.time()
-                    if hits_count >= HITS_REQUIRED and (now - last_trigger) > COOLDOWN_S:
-                        # média dos ângulos relativos dos hits (lado do obstáculo)
-                        mean_rel = sum(hits_angles_rel)/len(hits_angles_rel)
-                        if mean_rel < 0:
-                            # obstáculo mais à esquerda → aciona IN7
-                            print(f"[TRIGGER] obstáculo à ESQUERDA (avg {mean_rel:.1f}°) → IN7")
-                            relays.pulse(IN7_GPIO)
-                        else:
-                            # obstáculo mais à direita → aciona IN8
-                            print(f"[TRIGGER] obstáculo à DIREITA (avg {mean_rel:.1f}°) → IN8")
-                            relays.pulse(IN8_GPIO)
-                        last_trigger = now
-
-                    # reseta para a próxima volta
-                    hits_count = 0
-                    hits_angles_rel.clear()
-
-                last_start = bool(start)
-
-                # filtra por setor frontal e distância
-                in_front, rel_deg = in_front_sector(ang_abs)
-                if in_front and 0.05 <= dist_m <= DIST_THRESHOLD_M:
-                    hits_count += 1
-                    hits_angles_rel.append(rel_deg)
-
-        except KeyboardInterrupt:
+            self.all_off()
+        except Exception:
             pass
-        finally:
-            # STOP
-            send_cmd(ser, CMD["STOP"])
-            time.sleep(0.01)
+        if self.v2:
+            self.req.release()
+        else:
+            for ln in self.req:
+                try: ln.set_value(1 if ACTIVE_LOW else 0); ln.release()
+                except Exception: pass
+        self.chip.close()
+
+
+# ======= ALTO NÍVEL: AÇÕES =======
+class MotorControlViaReles:
+    def __init__(self, relays, pin_a, pin_b):
+        self.relays = relays
+        self.pin_a = pin_a
+        self.pin_b = pin_b
+
+    # ações SEMPRE EXCLUSIVAS: desliga uma ao ligar a outra
+    def _exclusive(self, which_pin, modo_pulso=MODO_PULSO):
+        # garante o outro OFF
+        other = self.pin_b if which_pin == self.pin_a else self.pin_a
+        self.relays.hold_off(other)
+        # liga a escolhida
+        if modo_pulso:
+            self.relays.pulse(which_pin)
+        else:
+            self.relays.hold_on(which_pin)
+
+    def acao_A(self, modo_pulso=MODO_PULSO):
+        # ex.: FRENTE
+        self._exclusive(self.pin_a, modo_pulso)
+
+    def acao_B(self, modo_pulso=MODO_PULSO):
+        # ex.: RÉ
+        self._exclusive(self.pin_b, modo_pulso)
+
+    def parar(self):
+        # solta ambos (útil quando está em modo “manter pressionado”)
+        self.relays.all_off()
+
+
+def demo_loop():
+    rel = Relays(CHIP_NAME, [IN7, IN8])
+    ctl = MotorControlViaReles(rel, IN7, IN8)
+
+    print(f"Pronto. {ACAO_A_NOME}=IN7({IN7})  {ACAO_B_NOME}=IN8({IN8})  "
+          f"modo={'PULSO' if MODO_PULSO else 'MANTER'}  (Ctrl+C para sair)")
+
+    try:
+        while True:
+            # Exemplo: alterna A e B para você observar no controle
+            print(f"{ACAO_A_NOME}")
+            ctl.acao_A()
+            time.sleep(1.5)
+
+            print(f"{ACAO_B_NOME}")
+            ctl.acao_B()
+            time.sleep(1.5)
+
+            if not MODO_PULSO:
+                print("PARAR")
+                ctl.parar()
+                time.sleep(0.8)
+
+            print("Pausa…")
+            time.sleep(1.0)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        rel.close()
+
 
 if __name__ == "__main__":
-    main()
+    # Se quiser usar via linha de comando:
+    #   python3 motores_rele.py A
+    #   python3 motores_rele.py B
+    #   python3 motores_rele.py STOP
+    args = sys.argv[1:]
+    rel = Relays(CHIP_NAME, [IN7, IN8])
+    ctl = MotorControlViaReles(rel, IN7, IN8)
+    try:
+        if not args:
+            demo_loop()  # demonstração cíclica
+        else:
+            cmd = args[0].upper()
+            if cmd in ("A", "FRENTE", "ESQ", "LEFT", "FORWARD"):
+                ctl.acao_A()
+            elif cmd in ("B", "RÉ", "RE", "DIR", "RIGHT", "BACK", "BACKWARD"):
+                ctl.acao_B()
+            elif cmd in ("STOP", "PARAR", "OFF"):
+                ctl.parar()
+            else:
+                print("Uso: A | B | STOP")
+    finally:
+        rel.close()
