@@ -1,35 +1,48 @@
-import subprocess
+#!/usr/bin/env python3
 import time
+import gpiod  # libgpiod v2
 
-# === Configurações ===
-# Usando GPIO BCM (não número físico!)
-IN7 = 17   # Pino físico 11
-IN8 = 27   # Pino físico 13
+# Ajuste conforme seu sistema: geralmente "gpiochip0" no Pi
+CHIP_NAME = "gpiochip0"
+IN7 = 17   # pino físico 11
+IN8 = 27   # pino físico 13
 
-# Se o relé ligar invertido, troque ACTIVE_LOW para False
-ACTIVE_LOW = True
+# Abre o chip e requisita as linhas como saída
+chip = gpiod.Chip(CHIP_NAME)
+req = chip.request_lines(
+    consumer="reles",
+    config={
+        (IN7,): gpiod.LineSettings(direction=gpiod.LineDirection.OUTPUT, output_value=gpiod.LineValue.HIGH),
+        (IN8,): gpiod.LineSettings(direction=gpiod.LineDirection.OUTPUT, output_value=gpiod.LineValue.HIGH),
+    }
+)
+# Agora as linhas estão sob seu controle e não “flutuam”.
 
-# Função para executar gpioset
-def gpioset(pin, value):
-    level = 0 if (value and ACTIVE_LOW) else 1 if ACTIVE_LOW else (1 if value else 0)
-    cmd = ['gpioset', '--mode=exit', 'gpiochip4', f'{pin}={level}']
-    subprocess.run(cmd, check=True)
+def relay_on(pin):   # liga (ativo em LOW)
+    req.set_value(pin, gpiod.LineValue.LOW)
 
-def relay_on(pin):
-    gpioset(pin, True)
+def relay_off(pin):  # desliga (HIGH)
+    req.set_value(pin, gpiod.LineValue.HIGH)
 
-def relay_off(pin):
-    gpioset(pin, False)
+try:
+    print("Ligando IN7 (GPIO17) por 2s…")
+    relay_on(IN7)
+    time.sleep(2)
 
-# === Teste simples ===
-print("Ligando IN7 (GPIO17)")
-relay_on(IN7)
-time.sleep(2)
+    print("Desliga IN7, liga IN8 (GPIO27) por 2s…")
+    relay_off(IN7)
+    relay_on(IN8)
+    time.sleep(2)
 
-print("Desligando IN7, ligando IN8 (GPIO27)")
-relay_off(IN7)
-relay_on(IN8)
-time.sleep(2)
+    print("Desligando IN8…")
+    relay_off(IN8)
 
-print("Desligando IN8")
-relay_off(IN8)
+finally:
+    # Garante tudo desligado e libera as linhas
+    try:
+        relay_off(IN7)
+        relay_off(IN8)
+    except Exception:
+        pass
+    req.release()
+    chip.close()
