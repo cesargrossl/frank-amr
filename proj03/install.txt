@@ -9,3 +9,6 @@ g++ -o lidar lidar.cpp -I./rplidar_sdk/sdk/include -I./rplidar_sdk/sdk/src -L./r
 
 g++ -o lidar lidar.cpp -I./rplidar_sdk/sdk/include -I./rplidar_sdk/sdk/src -L./rplidar_sdk/output/Linux/Release -lsl_lidar_sdk -lpthread -lpigpio -lrt
 g++ -o carrinho_lidar seu_codigo.cpp -I/path/to/rplidar_sdk/sdk/include -L/path/to/rplidar_sdk/output/Linux/Release -lsl_lidar_sdk -lpthread -lpigpio -lrt
+
+
+sudo ./lidar auto
