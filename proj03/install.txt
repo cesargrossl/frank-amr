@@ -1,0 +1,8 @@
+git clone https://github.com/Slamtec/rplidar_sdk.git
+
+
+cd rplidar_sdk
+make
+
+
+g++ -o carrinho_lidar seu_codigo.cpp -I/path/to/rplidar_sdk/sdk/include -L/path/to/rplidar_sdk/output/Linux/Release -lsl_lidar_sdk -lpthread -lpigpio -lrt
