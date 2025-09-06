@@ -1,23 +1,25 @@
 #include <iostream>
 #include <fcntl.h>
-#include <termios.h>
 #include <unistd.h>
-#include <string.h>
+#include <sys/ioctl.h>
+#include <asm/termbits.h>   // struct termios2, BOTHER
+#include <linux/serial.h>
+#include <cstring>
 
 #define DEVICE "/dev/ttyUSB0"
 #define BAUDRATE 256000
 
 int main() {
-    int serial_port = open(DEVICE, O_RDWR | O_NOCTTY | O_NDELAY);
+    int serial_port = open(DEVICE, O_RDWR | O_NOCTTY | O_SYNC);
     if (serial_port < 0) {
-        std::cerr << "Erro ao abrir " << DEVICE << std::endl;
+        perror("Erro ao abrir porta serial");
         return 1;
     }
     std::cout << "Porta serial aberta: " << DEVICE << std::endl;
 
-    struct termios2 tio;
+    struct termios2 tio{};
     if (ioctl(serial_port, TCGETS2, &tio) < 0) {
-        std::cerr << "Erro ao obter configuração termios2\n";
+        perror("Erro TCGETS2");
         return 1;
     }
 
@@ -31,30 +33,23 @@ int main() {
     tio.c_cflag &= ~PARENB;
     tio.c_cflag &= ~CSTOPB;
     tio.c_cflag &= ~CRTSCTS;
-    tio.c_iflag = IGNPAR;
-    tio.c_oflag = 0;
-    tio.c_lflag = 0;
 
     if (ioctl(serial_port, TCSETS2, &tio) < 0) {
-        std::cerr << "Erro ao aplicar configuração termios2\n";
+        perror("Erro TCSETS2");
         return 1;
     }
 
-    std::cout << "Configuração da porta serial aplicada (baud 256000).\n";
+    std::cout << "Configuração aplicada: baud = " << BAUDRATE << "\n";
 
-    // Limpa buffers
-    tcflush(serial_port, TCIOFLUSH);
-
-    // Comando GET_INFO: 0xA5 0x50
-    unsigned char cmd[2] = { 0xA5, 0x50 };
-    int sent = write(serial_port, cmd, 2);
-    if (sent != 2) {
-        std::cerr << "Erro ao enviar comando\n";
-        return 1;
+    // Envia comando GET_INFO
+    unsigned char cmd[2] = {0xA5, 0x50};
+    if (write(serial_port, cmd, 2) != 2) {
+        perror("Erro write");
+    } else {
+        std::cout << "Comando GET_INFO enviado\n";
     }
 
-    std::cout << "Comando GET_INFO enviado, aguardando resposta...\n";
-    usleep(100000); // 100ms
+    usleep(200000); // espera 200ms pela resposta
 
     unsigned char buffer[64];
     int received = read(serial_port, buffer, sizeof(buffer));
