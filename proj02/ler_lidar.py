@@ -1,18 +1,17 @@
-from rplidar import RPLidar
+import argparse
+# ...
+def parse_args():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--port", default="/dev/ttyUSB0")
+    ap.add_argument("--baud", type=int, default=115200)  # mude para 256000 se preciso
+    return ap.parse_args()
 
-PORT = "/dev/ttyUSB0"   # ajuste se for outro
-for BAUD in (115200, 256000):
-    print("\n=== Tentando baud:", BAUD, "===")
+def main():
+    args = parse_args()
+    setup_gpio()
+    lidar = None
     try:
-        lidar = RPLidar(PORT, baudrate=BAUD, timeout=3)
-        info = lidar.get_info()
-        health = lidar.get_health()
-        print("INFO:", info)
-        print("HEALTH:", health)
-        lidar.stop()
-        lidar.stop_motor()
-        lidar.disconnect()
-        print("OK com baud", BAUD)
-        break
-    except Exception as e:
-        print("Falhou:", e)
+        lidar = RPLidar(args.port, baudrate=args.baud, timeout=3)
+        lidar.start_motor()
+        time.sleep(0.5)
+        # resto do loop...
