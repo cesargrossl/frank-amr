@@ -1,17 +1,16 @@
-import argparse
-# ...
-def parse_args():
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--port", default="/dev/ttyUSB0")
-    ap.add_argument("--baud", type=int, default=115200)  # mude para 256000 se preciso
-    return ap.parse_args()
+# ~/Desktop/raw_probe.py
+import serial, sys, time
 
-def main():
-    args = parse_args()
-    setup_gpio()
-    lidar = None
-    try:
-        lidar = RPLidar(args.port, baudrate=args.baud, timeout=3)
-        lidar.start_motor()
-        time.sleep(0.5)
-        # resto do loop...
+PORT  = sys.argv[1] if len(sys.argv)>1 else "/dev/ttyUSB0"
+BAUD  = int(sys.argv[2]) if len(sys.argv)>2 else 256000
+
+ser = serial.Serial(PORT, BAUD, timeout=2)
+ser.reset_input_buffer()
+ser.reset_output_buffer()
+
+# Comando GET_INFO: 0xA5 0x50
+ser.write(bytes([0xA5, 0x50]))
+time.sleep(0.05)
+data = ser.read(32)
+print("Len:", len(data), "Hex:", data.hex())
+ser.close()
