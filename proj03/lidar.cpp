@@ -93,14 +93,12 @@ int main(int argc, char** argv) {
             return 1;
         }
 
-        // Liga o motor do LIDAR
-        lidar->setMotorPWM(true);  // Substitui startMotor()
+        // Inicia o scan (para RPLIDAR C1, o motor é gerenciado automaticamente)
         std::vector<LidarScanMode> scanModes;
         lidar->getAllSupportedScanModes(scanModes);
         res = lidar->startScan(false, scanModes[0].id);  // Modo padrão para C1
         if (SL_IS_FAIL(res)) {
             fprintf(stderr, "Falha ao iniciar scan %08x\n", res);
-            lidar->setMotorPWM(false);  // Substitui stopMotor()
             delete lidar;
             delete channel;
             gpioTerminate();
@@ -150,7 +148,6 @@ int main(int argc, char** argv) {
 
         // Cleanup (nunca alcançado sem sinal, mas para referência)
         lidar->stop();
-        lidar->setMotorPWM(false);  // Desliga o motor
         delete lidar;
         delete channel;
     }
