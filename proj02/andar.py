@@ -1,4 +1,4 @@
-asda# l298n_pi.py — Controle de 2 motores com L298N (Raspberry Pi)
+# l298n_pi.py — Controle de 2 motores com L298N (Raspberry Pi)
 # Sequência: frente -> trás -> giro (A frente, B trás)
 
 import time
