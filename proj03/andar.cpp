@@ -4,6 +4,7 @@
 #include <thread>
 #include <chrono>
 #include <cstdlib>
+#include <unistd.h>   // <- necessário para geteuid()
 
 // ====== CONFIGURE SEUS PINOS (BCM) ======
 static const int IN1 = 17; // Motor A
@@ -70,18 +71,15 @@ static void parar() {
     set_val(IN1,0); set_val(IN2,0); set_val(IN3,0); set_val(IN4,0);
 }
 static void frente() {
-    // A: IN1=1 IN2=0  |  B: IN3=1 IN4=0
     set_val(IN1,1); set_val(IN2,0); set_val(IN3,1); set_val(IN4,0);
 }
 static void tras() {
     set_val(IN1,0); set_val(IN2,1); set_val(IN3,0); set_val(IN4,1);
 }
 static void girar_esq() {
-    // A frente, B ré
     set_val(IN1,1); set_val(IN2,0); set_val(IN3,0); set_val(IN4,1);
 }
 static void girar_dir() {
-    // A ré, B frente
     set_val(IN1,0); set_val(IN2,1); set_val(IN3,1); set_val(IN4,0);
 }
 
