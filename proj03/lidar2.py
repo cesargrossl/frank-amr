@@ -4,7 +4,8 @@
 #include <thread>
 #include <chrono>
 #include <pigpio.h>
-#include <rplidar.h>  // Inclua o header do SDK Slamtec
+#include <rplidar.h>
+#include <csignal>
 
 #ifndef _countof
 #define _countof(_Array) (sizeof(_Array) / sizeof(_Array[0]))
@@ -13,17 +14,26 @@
 using namespace std::chrono_literals;
 using namespace sl;
 
+// Variável global para controlar a execução
+volatile sig_atomic_t running = 1;
+
+// Função de manipulador de sinal
+void signal_handler(int signum) {
+    running = 0;
+}
+
 // Pinos BCM ligados ao L298N
 const int IN1 = 17; // Motor A (Pino 11)
 const int IN2 = 27; // Motor A (Pino 13)
 const int IN3 = 22; // Motor B (Pino 15)
 const int IN4 = 23; // Motor B (Pino 16)
 
+// Funções ajustadas para compensar possível inversão de fiação em um motor
 static void parar()      { gpioWrite(IN1, 0); gpioWrite(IN2, 0); gpioWrite(IN3, 0); gpioWrite(IN4, 0); }
-static void frente()     { gpioWrite(IN1, 1); gpioWrite(IN2, 0); gpioWrite(IN3, 1); gpioWrite(IN4, 0); }
-static void tras()       { gpioWrite(IN1, 0); gpioWrite(IN2, 1); gpioWrite(IN3, 0); gpioWrite(IN4, 1); }
-static void girar_esq()  { gpioWrite(IN1, 1); gpioWrite(IN2, 0); gpioWrite(IN3, 0); gpioWrite(IN4, 1); }
-static void girar_dir()  { gpioWrite(IN1, 0); gpioWrite(IN2, 1); gpioWrite(IN3, 1); gpioWrite(IN4, 0); }
+static void frente()     { gpioWrite(IN1, 1); gpioWrite(IN2, 0); gpioWrite(IN3, 0); gpioWrite(IN4, 1); }  // Inverte Motor B para frente
+static void tras()       { gpioWrite(IN1, 0); gpioWrite(IN2, 1); gpioWrite(IN3, 1); gpioWrite(IN4, 0); }  // Inverte Motor B para trás
+static void girar_esq()  { gpioWrite(IN1, 1); gpioWrite(IN2, 0); gpioWrite(IN3, 1); gpioWrite(IN4, 0); }  // Ajustado para inversão
+static void girar_dir()  { gpioWrite(IN1, 0); gpioWrite(IN2, 1); gpioWrite(IN3, 0); gpioWrite(IN4, 1); }  // Ajustado para inversão
 
 int main(int argc, char** argv) {
     if (gpioInitialise() < 0) { // precisa rodar com sudo
@@ -36,6 +46,9 @@ int main(int argc, char** argv) {
     gpioSetMode(IN3, PI_OUTPUT);
     gpioSetMode(IN4, PI_OUTPUT);
     parar();
+
+    // Registra o manipulador de sinal
+    signal(SIGINT, signal_handler);
 
     double t = (argc >= 3) ? std::atof(argv[2]) : 1.0;
     std::string cmd = (argc >= 2) ? argv[1] : "demo";
@@ -109,7 +122,7 @@ int main(int argc, char** argv) {
         frente();
 
         // Loop autônomo
-        while (true) {
+        while (running) {
             // Captura dados do scan
             sl_lidar_response_measurement_node_hq_t nodes[8192];
             size_t count = _countof(nodes);
@@ -144,11 +157,12 @@ int main(int argc, char** argv) {
                 printf("Falha ao capturar dados %08x\n", res);
             }
 
-            // Pequeno delay para escaneamento, mas não interrompe o movimento
+            // Pequeno delay para escaneamento
             std::this_thread::sleep_for(50ms);
         }
 
-        // Cleanup (nunca alcançado sem sinal, mas para referência)
+        // Cleanup ao sair
+        parar();
         lidar->stop();
         delete lidar;
         delete channel;
