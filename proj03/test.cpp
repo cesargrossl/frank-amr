@@ -41,24 +41,32 @@ int main() {
 
     std::cout << "Configuração aplicada: baud = " << BAUDRATE << "\n";
 
-    // Envia comando GET_INFO
+    // Limpa buffers
+    tcflush(serial_port, TCIOFLUSH);
+
+    // Comando GET_INFO: 0xA5 0x50
     unsigned char cmd[2] = {0xA5, 0x50};
-    if (write(serial_port, cmd, 2) != 2) {
+    int sent = write(serial_port, cmd, 2);
+    if (sent != 2) {
         perror("Erro write");
     } else {
         std::cout << "Comando GET_INFO enviado\n";
     }
 
-    usleep(200000); // espera 200ms pela resposta
+    usleep(1000000); // espera 1 segundo pela resposta
 
-    unsigned char buffer[64];
+    unsigned char buffer[128];
     int received = read(serial_port, buffer, sizeof(buffer));
-    std::cout << "Recebidos " << received << " bytes:\n";
 
-    for (int i = 0; i < received; i++) {
-        printf("%02X ", buffer[i]);
+    if (received <= 0) {
+        std::cout << "Nenhum byte recebido do LIDAR." << std::endl;
+    } else {
+        std::cout << "Recebidos " << received << " bytes:\n";
+        for (int i = 0; i < received; i++) {
+            printf("%02X ", buffer[i]);
+        }
+        printf("\n");
     }
-    printf("\n");
 
     close(serial_port);
     return 0;
