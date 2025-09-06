@@ -14,16 +14,16 @@ using namespace std::chrono_literals;
 using namespace sl;
 
 // Pinos BCM ligados ao L298N
-const int IN1 = 17; // Motor A
-const int IN2 = 27; // Motor A
-const int IN3 = 22; // Motor B
-const int IN4 = 23; // Motor B
+const int IN1 = 17; // Motor A (Pino 11)
+const int IN2 = 27; // Motor A (Pino 13)
+const int IN3 = 22; // Motor B (Pino 15)
+const int IN4 = 23; // Motor B (Pino 16)
 
-static void parar()      { gpioWrite(IN1,0); gpioWrite(IN2,0); gpioWrite(IN3,0); gpioWrite(IN4,0); }
-static void frente()     { gpioWrite(IN1,1); gpioWrite(IN2,0); gpioWrite(IN3,1); gpioWrite(IN4,0); }
-static void tras()       { gpioWrite(IN1,0); gpioWrite(IN2,1); gpioWrite(IN3,0); gpioWrite(IN4,1); }
-static void girar_esq()  { gpioWrite(IN1,1); gpioWrite(IN2,0); gpioWrite(IN3,0); gpioWrite(IN4,1); }
-static void girar_dir()  { gpioWrite(IN1,0); gpioWrite(IN2,1); gpioWrite(IN3,1); gpioWrite(IN4,0); }
+static void parar()      { gpioWrite(IN1, 0); gpioWrite(IN2, 0); gpioWrite(IN3, 0); gpioWrite(IN4, 0); }
+static void frente()     { gpioWrite(IN1, 1); gpioWrite(IN2, 0); gpioWrite(IN3, 1); gpioWrite(IN4, 0); }
+static void tras()       { gpioWrite(IN1, 0); gpioWrite(IN2, 1); gpioWrite(IN3, 0); gpioWrite(IN4, 1); }
+static void girar_esq()  { gpioWrite(IN1, 1); gpioWrite(IN2, 0); gpioWrite(IN3, 0); gpioWrite(IN4, 1); }
+static void girar_dir()  { gpioWrite(IN1, 0); gpioWrite(IN2, 1); gpioWrite(IN3, 1); gpioWrite(IN4, 0); }
 
 int main(int argc, char** argv) {
     if (gpioInitialise() < 0) { // precisa rodar com sudo
@@ -40,14 +40,14 @@ int main(int argc, char** argv) {
     double t = (argc >= 3) ? std::atof(argv[2]) : 1.0;
     std::string cmd = (argc >= 2) ? argv[1] : "demo";
 
-    auto run_for = [&](void(*fn)(), double sec){
+    auto run_for = [&](void(*fn)(), double sec) {
         fn();
-        std::this_thread::sleep_for(std::chrono::milliseconds((int)(sec*1000)));
+        std::this_thread::sleep_for(std::chrono::milliseconds((int)(sec * 1000)));
         parar();
     };
 
     if (cmd == "frente") run_for(frente, t);
-    else if (cmd == "tras")   run_for(tras,   t);
+    else if (cmd == "tras")   run_for(tras, t);
     else if (cmd == "esq")    run_for(girar_esq, t);
     else if (cmd == "dir")    run_for(girar_dir, t);
     else if (cmd == "parar")  parar();
@@ -93,14 +93,14 @@ int main(int argc, char** argv) {
             return 1;
         }
 
-        // Inicia o motor e o scan
-        lidar->startMotor();
+        // Liga o motor do LIDAR
+        lidar->setMotorPWM(true);  // Substitui startMotor()
         std::vector<LidarScanMode> scanModes;
         lidar->getAllSupportedScanModes(scanModes);
         res = lidar->startScan(false, scanModes[0].id);  // Modo padrão para C1
         if (SL_IS_FAIL(res)) {
             fprintf(stderr, "Falha ao iniciar scan %08x\n", res);
-            lidar->stopMotor();
+            lidar->setMotorPWM(false);  // Substitui stopMotor()
             delete lidar;
             delete channel;
             gpioTerminate();
@@ -150,7 +150,7 @@ int main(int argc, char** argv) {
 
         // Cleanup (nunca alcançado sem sinal, mas para referência)
         lidar->stop();
-        lidar->stopMotor();
+        lidar->setMotorPWM(false);  // Desliga o motor
         delete lidar;
         delete channel;
     }
