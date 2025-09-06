@@ -6,3 +6,5 @@ ser.write(bytes([0xA5, 0x20]))  # comando para iniciar scan
 while True:
     data = ser.read(5)
     print(data.hex())
+Modelo	Compatível com rplidar	Alcance	Preço (estimado)	Observações
+RPLIDAR A1
