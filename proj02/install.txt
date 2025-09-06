@@ -1,0 +1,23 @@
+# Instale suporte a venv (se ainda não tiver)
+sudo apt install -y python3-venv python3-full
+
+# Crie e ative um venv
+python3 -m venv ~/venv
+source ~/venv/bin/activate
+
+# Agora dentro do venv, pip funciona normal
+pip install rplidar
+
+
+
+source ~/venv/bin/activate
+python l298n_pi_lidar.py
+
+
+
+sudo pip3 install rplidar --break-system-packages
+
+
+
+sudo apt update
+sudo apt install python3-rplidar
