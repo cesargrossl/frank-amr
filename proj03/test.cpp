@@ -2,8 +2,9 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/ioctl.h>
-#include <asm/termbits.h>   // struct termios2, BOTHER
+#include <asm/termbits.h>   // termios2, BOTHER
 #include <linux/serial.h>
+#include <termios.h>        // <-- necessário para tcflush()
 #include <cstring>
 
 #define DEVICE "/dev/ttyUSB0"
@@ -53,9 +54,9 @@ int main() {
         std::cout << "Comando GET_INFO enviado\n";
     }
 
-    usleep(1000000); // espera 1 segundo pela resposta
+    usleep(1000000); // espera 1s
 
-    unsigned char buffer[128];
+    unsigned char buffer[64];
     int received = read(serial_port, buffer, sizeof(buffer));
 
     if (received <= 0) {
