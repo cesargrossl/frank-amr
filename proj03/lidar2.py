@@ -105,10 +105,11 @@ int main(int argc, char** argv) {
             return 1;
         }
 
+        // Define movimento inicial para frente
+        frente();
+
         // Loop autônomo
         while (true) {
-            frente();  // Mantém o movimento para frente continuamente
-
             // Captura dados do scan
             sl_lidar_response_measurement_node_hq_t nodes[8192];
             size_t count = _countof(nodes);
@@ -137,13 +138,13 @@ int main(int argc, char** argv) {
                     std::this_thread::sleep_for(1000ms);  // 1s de giro
                     parar();  // Para após o giro
                     std::this_thread::sleep_for(200ms);
-                    // Retoma o movimento para frente automaticamente na próxima iteração
+                    frente();  // Retoma o movimento para frente imediatamente
                 }
             } else {
                 printf("Falha ao capturar dados %08x\n", res);
             }
 
-            // Pequeno delay para evitar loop apertado e permitir escaneamento
+            // Pequeno delay para escaneamento, mas não interrompe o movimento
             std::this_thread::sleep_for(50ms);
         }
 
