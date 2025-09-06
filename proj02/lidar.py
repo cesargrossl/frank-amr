@@ -1,166 +1,201 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-# L298N + RPLIDAR (C1) — desvio reativo a 30 cm
+# L298N + RPLIDAR C1 (protocolo raw 5B) — desvio reativo a 30 cm
 
-import time
-import math
-import sys
-import argparse
+import time, sys, math, serial
 import RPi.GPIO as GPIO
 
-try:
-    from rplidar import RPLidar, RPLidarException
-except ImportError:
-    print("Instale no venv: pip install rplidar RPi.GPIO")
-    sys.exit(1)
+# ========= SERIAL =========
+PORT = "/dev/ttyUSB0"   # prefira: /dev/serial/by-id/usb-...
+BAUD = 460800           # C1: use o que funcionou no seu teste (você confirmou 460800)
+TIMEOUT = 1.0
 
-# ==== GPIO (BCM) ====
+# ========= LIDAR protocolo =========
+A5 = 0xA5
+CMD = {"STOP":0x25, "RESET":0x40, "SCAN":0x20, "GET_INFO":0x50, "GET_HEALTH":0x52}
+
+def send_cmd(ser, cmd, payload=b""):
+    if payload:
+        pkt = bytes([A5, cmd, len(payload)]) + payload
+        chk = 0
+        for b in pkt: chk ^= b
+        ser.write(pkt + bytes([chk]))
+    else:
+        ser.write(bytes([A5, cmd]))
+
+def read_descriptor(ser):
+    hdr = ser.read(2)
+    if hdr != b"\xA5\x5A":
+        return None
+    rest = ser.read(5)
+    if len(rest) != 5: return None
+    lm = rest[0] | (rest[1]<<8) | (rest[2]<<16) | (rest[3]<<24)
+    data_len = lm & 0x3FFFFFFF
+    send_mode = (lm >> 30) & 0x3
+    data_type = rest[4]
+    return data_len, send_mode, data_type
+
+def decode_measurement_5b(pkt):
+    b0,b1,b2,b3,b4 = pkt
+    # bit0 de b1 deve ser 1 (check bit)
+    if (b1 & 0x01) == 0:
+        return None
+    start_flag     =  b0 & 0x01
+    angle_q6       = ((b2 << 7) | (b1 >> 1)) & 0xFFFF
+    dist_q2        = (b4 << 8) | b3
+    angle_deg      = (angle_q6 / 64.0) % 360.0
+    dist_m         = (dist_q2 / 4.0) / 1000.0
+    quality        =  b0 >> 2
+    return start_flag, angle_deg, dist_m, quality
+
+def lidar_open(port=PORT, baud=BAUD, timeout=TIMEOUT):
+    ser = serial.Serial(port, baud, timeout=timeout)
+    ser.dtr = False; ser.rts = False
+    ser.reset_input_buffer(); ser.reset_output_buffer()
+    return ser
+
+def lidar_info(ser):
+    send_cmd(ser, CMD["GET_INFO"])
+    d = read_descriptor(ser)
+    if not d: return None
+    n,_,_ = d
+    data = ser.read(n)
+    if len(data) != n or n != 20: return None
+    model, fw_minor, fw_major, hw = data[0], data[1], data[2], data[3]
+    serial_hex = data[4:20][::-1].hex()
+    return dict(model=model, fw=f"{fw_major}.{fw_minor}", hw=hw, serial=serial_hex)
+
+def lidar_health(ser):
+    send_cmd(ser, CMD["GET_HEALTH"])
+    d = read_descriptor(ser)
+    if not d: return None
+    n,_,_ = d
+    data = ser.read(n)
+    if len(data) != n or n != 3: return None
+    st = data[0]; err = data[1] | (data[2]<<8)
+    return dict(status=st, errcode=err)
+
+def lidar_start_scan(ser):
+    send_cmd(ser, CMD["SCAN"])
+    d = read_descriptor(ser)
+    if not d: raise RuntimeError("Sem descriptor após SCAN")
+    n,_,dtype = d
+    if n != 5 or dtype != 0x81:
+        print(f"[WARN] Descriptor inesperado: len={n} type=0x{dtype:02X} (prosseguindo)")
+
+def lidar_stop_scan(ser):
+    send_cmd(ser, CMD["STOP"]); time.sleep(0.002)
+
+# ========= SETORES / LÓGICA =========
+SECTOR_FRONT = (-25, 25)
+SECTOR_LEFT  = (40,  90)
+SECTOR_RIGHT = (270, 320)
+DIST_THRESH_M = 0.30
+MIN_VALID_M   = 0.05
+MAX_VALID_M   = 4.00
+
+def _norm(a): 
+    a %= 360.0
+    return a + 360.0 if a < 0 else a
+
+def in_sector(angle, sec):
+    s,e = map(_norm, sec)
+    a = _norm(angle)
+    return (s <= e and s <= a <= e) or (s > e and (a >= s or a <= e))
+
+def sector_mins_from_stream(ser, duration_s=0.15):
+    """Lê pacotes por ~duration_s e retorna menor distância por setor (m)."""
+    t0 = time.time()
+    mins = {"FRONT": float("inf"), "LEFT": float("inf"), "RIGHT": float("inf")}
+    while time.time() - t0 < duration_s:
+        pkt = ser.read(5)
+        if len(pkt) != 5: continue
+        node = decode_measurement_5b(pkt)
+        if not node: continue
+        _, ang, dist_m, q = node
+        if not (MIN_VALID_M <= dist_m <= MAX_VALID_M): 
+            continue
+        if in_sector(ang, SECTOR_FRONT) and dist_m < mins["FRONT"]:
+            mins["FRONT"] = dist_m
+        if in_sector(ang, SECTOR_LEFT) and dist_m < mins["LEFT"]:
+            mins["LEFT"] = dist_m
+        if in_sector(ang, SECTOR_RIGHT) and dist_m < mins["RIGHT"]:
+            mins["RIGHT"] = dist_m
+    # None se não houve leitura
+    for k,v in list(mins.items()):
+        mins[k] = (None if v == float("inf") else v)
+    return mins
+
+def choose_side(mins):
+    L, R = mins.get("LEFT"), mins.get("RIGHT")
+    if L is None and R is None: return "esq"
+    if L is None: return "dir"
+    if R is None: return "esq"
+    return "esq" if L >= R else "dir"
+
+# ========= GPIO / MOVIMENTO =========
 IN1, IN2 = 17, 27   # Motor A
 IN3, IN4 = 22, 23   # Motor B
 
-# ==== Movimento ====
-FWD_SPEED_TIME = 0.10   # passo para frente entre leituras
-TURN_TIME      = 0.35   # tempo de giro para desvio
-PAUSE_BRAKE    = 0.08
+FWD_STEP   = 0.10   # s de avanço entre leituras
+TURN_TIME  = 0.35   # s de giro no desvio
+PAUSE_BRAK = 0.08
 
-# ==== Setores LIDAR (graus) ====
-SECTOR_FRONT = (-25, 25)
-SECTOR_LEFT  = (40, 90)
-SECTOR_RIGHT = (270, 320)
-DIST_THRESH_M = 0.30
-MIN_VALID_MM, MAX_VALID_MM = 50, 4000
-
-def setup_gpio():
-    GPIO.setmode(GPIO.BCM)
-    GPIO.setwarnings(False)
-    for p in (IN1, IN2, IN3, IN4):
+def gpio_setup():
+    GPIO.setmode(GPIO.BCM); GPIO.setwarnings(False)
+    for p in (IN1,IN2,IN3,IN4):
         GPIO.setup(p, GPIO.OUT, initial=GPIO.LOW)
 
 def motores_parar():
-    GPIO.output(IN1, GPIO.LOW); GPIO.output(IN2, GPIO.LOW)
-    GPIO.output(IN3, GPIO.LOW); GPIO.output(IN4, GPIO.LOW)
+    GPIO.output(IN1,0); GPIO.output(IN2,0); GPIO.output(IN3,0); GPIO.output(IN4,0)
 
 def motores_frente():
-    GPIO.output(IN1, GPIO.HIGH); GPIO.output(IN2, GPIO.LOW)
-    GPIO.output(IN3, GPIO.HIGH); GPIO.output(IN4, GPIO.LOW)
+    GPIO.output(IN1,1); GPIO.output(IN2,0); GPIO.output(IN3,1); GPIO.output(IN4,0)
 
 def motores_girar_esq():
-    GPIO.output(IN1, GPIO.HIGH); GPIO.output(IN2, GPIO.LOW)
-    GPIO.output(IN3, GPIO.LOW);  GPIO.output(IN4, GPIO.HIGH)
+    GPIO.output(IN1,1); GPIO.output(IN2,0); GPIO.output(IN3,0); GPIO.output(IN4,1)
 
 def motores_girar_dir():
-    GPIO.output(IN1, GPIO.LOW);  GPIO.output(IN2, GPIO.HIGH)
-    GPIO.output(IN3, GPIO.HIGH); GPIO.output(IN4, GPIO.LOW)
+    GPIO.output(IN1,0); GPIO.output(IN2,1); GPIO.output(IN3,1); GPIO.output(IN4,0)
 
-def clamp_angle(a):
-    a = a % 360.0
-    return a + 360.0 if a < 0 else a
-
-def angle_in_sector(angle, sector):
-    start, end = map(clamp_angle, sector)
-    angle = clamp_angle(angle)
-    if start <= end:
-        return start <= angle <= end
-    return angle >= start or angle <= end
-
-def scan_min_by_sectors(lidar, sectors, max_scans=1, timeout_s=0.5):
-    mins_mm = {name: float('inf') for name in sectors}
-    t0 = time.time()
-    for i, scan in enumerate(lidar.iter_scans(max_buf_meas=500)):
-        for (_, ang, dmm) in scan:
-            if dmm < MIN_VALID_MM or dmm > MAX_VALID_MM:
-                continue
-            for name, sec in sectors.items():
-                if angle_in_sector(ang, sec) and dmm < mins_mm[name]:
-                    mins_mm[name] = dmm
-        if i + 1 >= max_scans or (time.time() - t0) > timeout_s:
-            break
-    return {k: (v/1000.0 if v != float('inf') else None) for k, v in mins_mm.items()}
-
-def escolher_lado_desvio(mins):
-    L, R = mins.get('LEFT'), mins.get('RIGHT')
-    if L is None and R is None: return 'esq'
-    if L is None: return 'dir'
-    if R is None: return 'esq'
-    return 'esq' if L >= R else 'dir'
-
-def open_lidar(port, baud, timeout=3):
-    """Abre o LIDAR. Tenta baud informado; se der erro de descritor, tenta o outro."""
-    try_order = [baud] + ([115200] if baud != 115200 else [256000])
-    last_exc = None
-    for b in try_order:
-        try:
-            ld = RPLidar(port, baudrate=b, timeout=timeout)
-            # tocar o motor e ler um health rápido valida o descritor
-            ld.start_motor()
-            status, code = ld.get_health()
-            # status é string, code é int; se deu certo, usa esse baud
-            return ld, b
-        except Exception as e:
-            last_exc = e
-            try:
-                # se abriu parcialmente, tente parar e desconectar
-                ld.stop()
-                ld.stop_motor()
-                ld.disconnect()
-            except Exception:
-                pass
-    raise last_exc if last_exc else RPLidarException("Falha ao abrir LIDAR")
-
-def parse_args():
-    ap = argparse.ArgumentParser(description="L298N + RPLIDAR (C1) com desvio a 30 cm")
-    ap.add_argument("--port", default="/dev/ttyUSB0", help="Porta serial do LIDAR")
-    ap.add_argument("--baud", type=int, default=256000, help="Baud do LIDAR (C1=256000)")
-    ap.add_argument("--th", type=float, default=DIST_THRESH_M, help="Limite frontal em metros")
-    ap.add_argument("--turn", type=float, default=TURN_TIME, help="Tempo de giro (s)")
-    ap.add_argument("--step", type=float, default=FWD_SPEED_TIME, help="Passo de avanço (s)")
-    return ap.parse_args()
-
+# ========= MAIN LOOP =========
 def main():
-    args = parse_args()
-    global DIST_THRESH_M, TURN_TIME, FWD_SPEED_TIME
-    DIST_THRESH_M = args.th
-    TURN_TIME = args.turn
-    FWD_SPEED_TIME = args.step
-
-    setup_gpio()
-    lidar = None
+    print(f"Abrindo LIDAR em {PORT} @ {BAUD}…")
+    ser = lidar_open(PORT, BAUD, TIMEOUT)
     try:
-        lidar, used_baud = open_lidar(args.port, args.baud)
-        print(f"LIDAR aberto em {args.port} a {used_baud} baud (C1 esperado = 256000).")
-        time.sleep(0.4)
+        inf = lidar_info(ser)
+        if inf: print(f"INFO: model={inf['model']} fw={inf['fw']} hw={inf['hw']} sn={inf['serial']}")
+        hl = lidar_health(ser)
+        if hl:  print(f"HEALTH: status={hl['status']} err=0x{hl['errcode']:04X}")
+        lidar_start_scan(ser)
 
-        sectors = {'FRONT': SECTOR_FRONT, 'LEFT': SECTOR_LEFT, 'RIGHT': SECTOR_RIGHT}
+        gpio_setup()
         print("Rodando… Ctrl+C para sair.")
-
         while True:
-            mins = scan_min_by_sectors(lidar, sectors, max_scans=1, timeout_s=0.4)
-            front = mins.get('FRONT')
+            mins = sector_mins_from_stream(ser, duration_s=0.15)
+            front = mins.get("FRONT")
             if (front is not None) and (front <= DIST_THRESH_M):
-                motores_parar(); time.sleep(PAUSE_BRAKE)
-                lado = escolher_lado_desvio(mins)
-                (motores_girar_esq if lado == 'esq' else motores_girar_dir)()
+                motores_parar(); time.sleep(PAUSE_BRAK)
+                lado = choose_side(mins)
+                (motores_girar_esq if lado == "esq" else motores_girar_dir)()
                 time.sleep(TURN_TIME)
-                motores_parar(); time.sleep(PAUSE_BRAKE)
+                motores_parar(); time.sleep(PAUSE_BRAK)
             else:
-                motores_frente(); time.sleep(FWD_SPEED_TIME)
+                motores_frente(); time.sleep(FWD_STEP)
                 motores_parar();  time.sleep(0.02)
-
     except KeyboardInterrupt:
         pass
     finally:
         try:
-            if lidar is not None:
-                try: lidar.stop()
-                except Exception: pass
-                try: lidar.stop_motor()
-                except Exception: pass
-                try: lidar.disconnect()
-                except Exception: pass
+            lidar_stop_scan(ser); time.sleep(0.01)
         except Exception:
             pass
+        ser.close()
         motores_parar()
         GPIO.cleanup()
 
 if __name__ == "__main__":
+    # Permite passar porta/baud por argumentos (opcional)
+    if len(sys.argv) >= 2: PORT = sys.argv[1]
+    if len(sys.argv) >= 3: BAUD = int(sys.argv[2])
     main()
