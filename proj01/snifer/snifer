@@ -1,0 +1,154 @@
+#include <SPI.h>
+#include <nRF24L01.h>
+#include <RF24.h>
+
+RF24 radio(9,10);
+
+static const uint8_t CHANNEL = 70;          // canal que você achou
+static const uint8_t HEADER  = 0x42;        // 1º byte esperado
+static const uint8_t PKT_LEN = 32;
+
+static const uint16_t IDLE_WINDOW_MS = 1200; // janela p/ aprender idle
+static const uint16_t HOLD_WINDOW_MS = 900;  // segure o botão ~1s
+
+// buffers
+uint8_t idleAvg[PKT_LEN];        // média/maioria do idle
+uint32_t idleSum[PKT_LEN];       // soma para média
+uint16_t idleCount = 0;
+
+uint8_t sampAvg[PKT_LEN];
+uint32_t sampSum[PKT_LEN];
+uint16_t sampCount = 0;
+
+bool haveIdle = false;
+
+void printHex(const uint8_t* b, uint8_t n){
+  for (uint8_t i=0;i<n;i++){ if(b[i]<16) Serial.print('0'); Serial.print(b[i],HEX); Serial.print(' '); }
+}
+
+bool readPacket(uint8_t *buf){
+  if (!radio.available()) return false;
+  radio.read(buf, PKT_LEN);
+  if (buf[0] != HEADER) return false;       // filtro pelo header do teu controle
+  return true;
+}
+
+void beginRX(){
+  radio.setChannel(CHANNEL);
+  radio.setAutoAck(false);
+  radio.disableCRC();
+  radio.setDataRate(RF24_250KBPS);
+  radio.setPALevel(RF24_PA_HIGH);
+  radio.setAddressWidth(3);
+  const uint8_t any[5]={0,0,0,0,0};
+  radio.openReadingPipe(0, any);
+  radio.startListening();
+}
+
+void computeAvg(uint32_t *sum, uint16_t count, uint8_t *avg){
+  for (uint8_t i=0;i<PKT_LEN;i++){
+    avg[i] = (uint8_t)(sum[i] / (count ? count : 1));
+  }
+}
+
+void printDiff(const uint8_t *base, const uint8_t *cur){
+  Serial.println(F("=== DIFERENCAS (byte: base -> amostra | mask bits que mudaram) ==="));
+  for (uint8_t i=0;i<PKT_LEN;i++){
+    uint8_t b = base[i], c = cur[i];
+    if (b != c){
+      uint8_t mask = b ^ c; // bits que mudaram
+      Serial.print('#'); Serial.print(i); Serial.print(": ");
+      if (b < 16) Serial.print('0'); Serial.print(b,HEX);
+      Serial.print(" -> ");
+      if (c < 16) Serial.print('0'); Serial.print(c,HEX);
+      Serial.print("  mask=");
+      if (mask < 16) Serial.print('0'); Serial.print(mask,HEX);
+      Serial.println();
+    }
+  }
+}
+
+void resetAccum(uint32_t *sum, uint16_t &count){
+  memset(sum, 0, PKT_LEN*sizeof(uint32_t));
+  count = 0;
+}
+
+void setup(){
+  Serial.begin(115200);
+  if(!radio.begin()){ Serial.println(F("ERRO: NRF24 nao encontrado.")); while(1); }
+  beginRX();
+  Serial.println(F("Mapper iniciado. Passos:"));
+  Serial.println(F("1) Deixe SEM apertar botao por ~1s (aprende 'idle')."));
+  Serial.println(F("2) Segure UM botao por ~1s (calcula diferencas)."));
+  Serial.println(F("Repita para cada botao. Digite 'r' para recomecar tudo."));
+}
+
+void loop(){
+  // reset manual
+  if (Serial.available()){
+    char c = Serial.read();
+    if (c=='r' || c=='R'){
+      haveIdle = false;
+      resetAccum(idleSum, idleCount);
+      resetAccum(sampSum, sampCount);
+      Serial.println(F(">> Reset. Aprendendo idle novamente..."));
+    }
+  }
+
+  // 1) Aprender IDLE (sem botao)
+  if (!haveIdle){
+    resetAccum(idleSum, idleCount);
+    unsigned long t0 = millis();
+    uint8_t pkt[PKT_LEN];
+
+    Serial.println(F(">> Coletando IDLE... nao aperte nada."));
+    while (millis() - t0 < IDLE_WINDOW_MS){
+      if (readPacket(pkt)){
+        for (uint8_t i=0;i<PKT_LEN;i++) idleSum[i]+=pkt[i];
+        idleCount++;
+      }
+    }
+    if (idleCount > 0){
+      computeAvg(idleSum, idleCount, idleAvg);
+      Serial.print(F("Idle (avg, ")); Serial.print(idleCount); Serial.println(F(" pacotes):"));
+      printHex(idleAvg, PKT_LEN); Serial.println();
+      haveIdle = true;
+      Serial.println(F(">> Agora SEGURE um botao ~1s..."));
+    } else {
+      Serial.println(F("Nenhum pacote idle lido (aproxime controle). Tentando de novo..."));
+      delay(300);
+    }
+    return;
+  }
+
+  // 2) Coletar AMOSTRAS segurando um botao
+  resetAccum(sampSum, sampCount);
+  unsigned long t1 = millis();
+  uint8_t pkt[PKT_LEN];
+
+  while (millis() - t1 < HOLD_WINDOW_MS){
+    if (readPacket(pkt)){
+      for (uint8_t i=0;i<PKT_LEN;i++) sampSum[i]+=pkt[i];
+      sampCount++;
+    }
+  }
+
+  if (sampCount == 0){
+    // nenhum pacote durante a janela: volte a pedir para segurar
+    Serial.println(F("Nenhum pacote durante a janela. Segure um botao mais perto/mais tempo."));
+    delay(300);
+    return;
+  }
+
+  computeAvg(sampSum, sampCount, sampAvg);
+
+  Serial.print(F("\nBotao (avg, ")); Serial.print(sampCount); Serial.println(F(" pacotes):"));
+  printHex(sampAvg, PKT_LEN); Serial.println();
+
+  // 3) Mostrar diferencas vs IDLE
+  printDiff(idleAvg, sampAvg);
+
+  Serial.println(F("\n>> Solte. Para outro botao, segure ~1s novamente."));
+  Serial.println(F(">> 'r' para recomecar (reaprender idle)."));
+  delay(200);
+}
