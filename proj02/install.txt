@@ -1,3 +1,4 @@
+Opção 1 — Criar um ambiente virtual (recomendado)
 # Instale suporte a venv (se ainda não tiver)
 sudo apt install -y python3-venv python3-full
 
@@ -13,7 +14,7 @@ pip install rplidar
 source ~/venv/bin/activate
 python l298n_pi_lidar.py
 
-
+Opção 2 — Instalar no sistema mesmo (forçando)
 
 sudo pip3 install rplidar --break-system-packages
 
