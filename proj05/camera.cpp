@@ -1,4 +1,6 @@
 //rpicam-hello
+//g++ -o capture capture.cpp -l libcamera -l libcamera-base
+//./capture
 #include <libcamera/libcamera.h>
 #include <iostream>
 #include <fstream>
