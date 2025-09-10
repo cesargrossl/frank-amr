@@ -5,15 +5,11 @@
 
 using namespace std;
 
-// Definições dos pinos L298N (BCM GPIO)
+// GPIO ligados ao L298N
 const int IN1 = 17; // Motor A
 const int IN2 = 27; // Motor A
 const int IN3 = 22; // Motor B
 const int IN4 = 23; // Motor B
-
-// Pinos dos fins de curso
-const int LIMITE_ESQ = 5;
-const int LIMITE_DIR = 6;
 
 void parar() {
     gpioWrite(IN1, 0);
@@ -38,19 +34,36 @@ void tras() {
 
 int main() {
     if (gpioInitialise() < 0) {
-        cerr << "Erro ao inicializar pigpio" << endl;
+        cerr << "Erro ao inicializar pigpio!" << endl;
         return 1;
     }
 
-    // Configura os pinos do motor como saída
+    // Configura pinos como saída
     gpioSetMode(IN1, PI_OUTPUT);
     gpioSetMode(IN2, PI_OUTPUT);
     gpioSetMode(IN3, PI_OUTPUT);
     gpioSetMode(IN4, PI_OUTPUT);
 
-    // Configura os pinos dos fins de curso como entrada com pull-up
-    gpioSetMode(LIMITE_ESQ, PI_INPUT);
-    gpioSetPullUpDown(LIMITE_ESQ, PI_PUD_UP);
+    cout << "Teste motores (frente/tras)" << endl;
 
-    gpioSetMode(LIMITE_DIR, PI_INPUT);
-    g
+    while (true) {
+        cout << "Frente..." << endl;
+        frente();
+        this_thread::sleep_for(chrono::seconds(3));
+
+        cout << "Parar..." << endl;
+        parar();
+        this_thread::sleep_for(chrono::seconds(1));
+
+        cout << "Tras..." << endl;
+        tras();
+        this_thread::sleep_for(chrono::seconds(3));
+
+        cout << "Parar..." << endl;
+        parar();
+        this_thread::sleep_for(chrono::seconds(1));
+    }
+
+    gpioTerminate();
+    return 0;
+}
