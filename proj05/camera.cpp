@@ -2,6 +2,8 @@
 //g++ -o capture capture.cpp -l libcamera -l libcamera-base
 //./capture
 //g++ -o test_camera test_camera.cpp $(pkg-config --cflags --libs libcamera)
+//g++ -o test_camera test_camera.cpp -I/usr/include/libcamera -l libcamera -l libcamera-base
+// ./test_camera
 #include <libcamera/libcamera.h>
 #include <iostream>
 
