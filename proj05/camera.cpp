@@ -1,6 +1,7 @@
 //rpicam-hello
 //g++ -o capture capture.cpp -l libcamera -l libcamera-base
 //./capture
+//g++ -o test_camera test_camera.cpp $(pkg-config --cflags --libs libcamera)
 #include <libcamera/libcamera.h>
 #include <iostream>
 
