@@ -1,38 +1,65 @@
-//sudo apt update
-//sudo apt install libcamera-apps
-
-
-
-//sudo nano /boot/firmware/config.txt
-//dtoverlay=bcm2835-v4l2
-//sudo reboot
-//ls /dev/video*
-// v4l2-ctl --list-devices
-
-#include <opencv2/opencv.hpp>
+//rpicam-hello
+#include <libcamera/libcamera.h>
 #include <iostream>
+#include <fstream>
+
+using namespace libcamera;
 
 int main() {
-    cv::VideoCapture cap(0);  // /dev/video0
-    if (!cap.isOpened()) {
-        std::cerr << "Erro ao abrir a câmera!" << std::endl;
-        return 1;
+    // Inicializa a CameraManager
+    CameraManager cm;
+    cm.start();
+
+    // Verifica se há câmeras disponíveis
+    if (cm.cameras().empty()) {
+        std::cout << "Nenhuma câmera detectada!" << std::endl;
+        return -1;
     }
 
-    cap.set(cv::CAP_PROP_FRAME_WIDTH, 640);
-    cap.set(cv::CAP_PROP_FRAME_HEIGHT, 480);
-
-    cv::Mat frame;
-    while (true) {
-        cap >> frame;
-        if (frame.empty()) break;
-        cv::imshow("NoIR Camera", frame);
-        if (cv::waitKey(1) == 27) break; // ESC para sair
+    // Obtém a primeira câmera disponível
+    std::shared_ptr<Camera> camera = cm.cameras()[0];
+    if (camera->acquire() != 0) {
+        std::cout << "Falha ao adquirir a câmera!" << std::endl;
+        return -1;
     }
+
+    // Configura o stream da câmera
+    std::unique_ptr<CameraConfiguration> config = camera->generateConfiguration({ StreamRole::StillCapture });
+    config->at(0).pixelFormat = PixelFormat::fromString("YUV420");
+    config->at(0).size = { 1920, 1080 }; // Resolução desejada
+    config->validate();
+    camera->configure(config.get());
+
+    // Aloca buffers para o stream
+    FrameBufferAllocator allocator(camera);
+    allocator.allocate(config->at(0).stream());
+
+    // Cria uma solicitação de captura
+    std::unique_ptr<Request> request = camera->createRequest();
+    const auto& stream = config->at(0).stream();
+    request->addBuffer(stream, allocator.buffers(stream)[0].get());
+
+    // Inicia a câmera
+    camera->start();
+    camera->requestCompleted.connect([](Request* req) {
+        if (req->status() == Request::RequestComplete) {
+            std::cout << "Captura concluída!" << std::endl;
+        }
+    });
+
+    // Enfileira a solicitação de captura
+    camera->queueRequest(request.get());
+
+    // Aguarda a captura (simplificado)
+    sleep(2);
+
+    // Para a câmera e libera recursos
+    camera->stop();
+    camera->release();
+    cm.stop();
+
+    // Salva a imagem (exemplo básico, precisa de mais código para processar os dados do buffer)
+    std::cout << "Imagem capturada. Processamento do buffer necessário para salvar." << std::endl;
+
     return 0;
 }
-
-// para rodar
-
-// g++ camera.cpp -o camera `pkg-config --cflags --libs opencv4`
-//./camera
