@@ -1,28 +1,15 @@
-//rpicam-hello
-//g++ -o capture capture.cpp -l libcamera -l libcamera-base
-//./capture
-//g++ -o test_camera test_camera.cpp $(pkg-config --cflags --libs libcamera)
-//g++ -o test_camera test_camera.cpp -I/usr/include/libcamera -l libcamera -l libcamera-base
-// ./test_camera
-#include <libcamera/libcamera.h>
-#include <iostream>
+sudo apt update
+sudo apt install -y libcamera-apps libcamera-dev g++ cmake pkg-config \
+                    libopencv-dev gstreamer1.0-tools gstreamer1.0-libcamera \
+                    gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+                    gstreamer1.0-plugins-bad gstreamer1.0-plugins-ugly
 
-using namespace libcamera;
 
-int main() {
-    CameraManager cm;
-    if (cm.start() != 0) {
-        std::cout << "Falha ao iniciar o CameraManager!" << std::endl;
-        return -1;
-    }
 
-    if (cm.cameras().empty()) {
-        std::cout << "Nenhuma câmera detectada!" << std::endl;
-        return -1;
-    }
+libcamera-hello --list-cameras
+# ou
+rpicam-hello --list-cameras
 
-    std::cout << "Câmera detectada: " << cm.cameras()[0]->id() << std::endl;
 
-    cm.stop();
-    return 0;
-}
+
+libcamera-hello -t 0      # ou rpicam-hello -t 0 (preview contínuo)
