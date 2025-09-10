@@ -50,3 +50,8 @@ int main() {
     }
     return 0;
 }
+
+
+
+g++ -std=c++17 cam.cpp -o cam \
+  $(pkg-config --cflags --libs opencv4 gstreamer-1.0 gstreamer-app-1.0)
