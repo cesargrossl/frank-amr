@@ -67,3 +67,4 @@ int main() {
     gpioTerminate();
     return 0;
 }
+//g++ -o motor motor.cpp -lpigpio -lrt -lpthread
