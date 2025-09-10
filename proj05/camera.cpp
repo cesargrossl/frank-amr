@@ -13,3 +13,40 @@ rpicam-hello --list-cameras
 
 
 libcamera-hello -t 0      # ou rpicam-hello -t 0 (preview contínuo)
+
+
+
+#include <opencv2/opencv.hpp>
+#include <iostream>
+
+int main() {
+    // Pipeline GStreamer: libcamera -> (converte) -> appsink (OpenCV)
+    // Ajuste width/height/framerate conforme sua necessidade
+    const std::string pipeline =
+        "libcamerasrc ! "
+        "video/x-raw, width=1280, height=720, framerate=30/1 ! "
+        "videoconvert ! "
+        "video/x-raw, format=BGR ! "
+        "appsink drop=true sync=false";
+
+    cv::VideoCapture cap(pipeline, cv::CAP_GSTREAMER);
+    if (!cap.isOpened()) {
+        std::cerr << "Erro: não abriu a câmera via GStreamer/libcamera.\n"
+                     "Verifique se o pacote gstreamer1.0-libcamera está instalado\n"
+                     "e se seu OpenCV foi compilado com suporte a GStreamer.\n";
+        return 1;
+    }
+
+    cv::Mat frame;
+    while (true) {
+        if (!cap.read(frame) || frame.empty()) {
+            std::cerr << "Falha ao capturar frame.\n";
+            break;
+        }
+        cv::imshow("Pi Camera v2 (IMX219) - Preview", frame);
+        // ESC ou 'q' para sair
+        int key = cv::waitKey(1);
+        if (key == 27 || key == 'q') break;
+    }
+    return 0;
+}
