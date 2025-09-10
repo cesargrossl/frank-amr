@@ -35,3 +35,7 @@ int main() {
     cv::destroyAllWindows();
     return 0;
 }
+// para rodar
+
+// g++ camera.cpp -o camera `pkg-config --cflags --libs opencv4`
+//./camera
