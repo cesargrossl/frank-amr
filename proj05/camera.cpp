@@ -64,3 +64,7 @@ Package 'gstreamer-app-1.0' was not found
 
 sudo apt install -y libgstreamer1.0-dev libgstreamer-plugins-base1.0-dev
 
+
+g++ -std=c++17 cam.cpp -o cam \  $(pkg-config --cflags --libs opencv4 gstreamer-1.0 gstreamer-app-1.0)
+
+
