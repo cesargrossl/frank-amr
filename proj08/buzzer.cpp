@@ -1,27 +1,28 @@
-#include <wiringPi.h>
+#include <pigpio.h>
 #include <iostream>
-#include <unistd.h> // para sleep em microssegundos
+#include <unistd.h> // sleep
 
 using namespace std;
 
-#define BUZZER 1  // GPIO18 no esquema wiringPi (pino físico 12)
+#define BUZZER 18  // GPIO18 (pino físico 12)
 
 int main() {
-    if (wiringPiSetup() == -1) {
-        cerr << "Erro ao inicializar wiringPi" << endl;
+    if (gpioInitialise() < 0) {
+        cerr << "Erro ao inicializar pigpio!" << endl;
         return 1;
     }
 
-    pinMode(BUZZER, OUTPUT);
+    gpioSetMode(BUZZER, PI_OUTPUT);
 
-    // Liga buzzer 1 segundo
-    digitalWrite(BUZZER, HIGH);
     cout << "Buzzer ligado" << endl;
-    delay(1000);
+    gpioWrite(BUZZER, 1);
+    sleep(1);
 
-    // Desliga buzzer
-    digitalWrite(BUZZER, LOW);
     cout << "Buzzer desligado" << endl;
+    gpioWrite(BUZZER, 0);
+    sleep(1);
 
+    gpioTerminate();
     return 0;
 }
+g++ buzzer.cpp -o buzzer -lpigpio -lrt -pthread
