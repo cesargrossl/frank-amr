@@ -1,78 +1,161 @@
-#include <wiringPi.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <unistd.h>  // Para sleep
+#include <iostream>
+#include <pigpio.h>
+#include <unistd.h>
 
-#define TRIG 16  // GPIO 16 como trigger (saída)
-#define ECHO 18  // GPIO 18 como echo (entrada)
-#define MIN_DISTANCE 20  // Ignorar abaixo de 20 cm
-#define MAX_DISTANCE 400 // Ignorar acima de 400 cm
+#define TRIG 23  // GPIO23 (pino físico 16)
+#define ECHO 24  // GPIO24 (pino físico 18)
 
-static int ping() {
-    long ping_time = 0;
-    long pong_time = 0;
-    float distance = 0;
-    long timeout = 500000;  // Timeout de 0.5s (~170m max)
+// Constantes do HC-SR04
+#define MIN_DISTANCE 2.0    // Distância mínima confiável (cm)
+#define MAX_DISTANCE 400.0  // Distância máxima teórica (cm)
+#define TIMEOUT_US 30000    // Timeout em microssegundos (~5m)
 
-    // Envia pulso trigger
-    digitalWrite(TRIG, LOW);
-    usleep(2);  // Pequeno delay
-    digitalWrite(TRIG, HIGH);
-    usleep(10); // Pulso de 10us
-    digitalWrite(TRIG, LOW);
+using namespace std;
 
-    // Espera echo começar (HIGH)
-    long start = micros();
-    while (digitalRead(ECHO) == LOW && (micros() - start < timeout)) {
-        // Loop até HIGH ou timeout
+enum SensorStatus {
+    LEITURA_OK,
+    MUITO_PERTO,
+    MUITO_LONGE,
+    TIMEOUT_ECHO_LOW,
+    TIMEOUT_ECHO_HIGH,
+    ERRO_GERAL
+};
+
+struct MedicaoResult {
+    float distancia;
+    SensorStatus status;
+    string mensagem;
+};
+
+MedicaoResult medir_distancia() {
+    MedicaoResult result = {0.0, ERRO_GERAL, ""};
+    
+    // Pulso no TRIG
+    gpioWrite(TRIG, 0);
+    gpioDelay(2);
+    gpioWrite(TRIG, 1);
+    gpioDelay(10);
+    gpioWrite(TRIG, 0);
+
+    // Espera início do pulso no ECHO
+    uint32_t inicio_tempo = gpioTick();
+    uint32_t timeout_start = inicio_tempo;
+    
+    while (gpioRead(ECHO) == 0) {
+        inicio_tempo = gpioTick();
+        // Timeout de ~38ms para objetos muito distantes
+        if ((inicio_tempo - timeout_start) > 38000) {
+            result.status = TIMEOUT_ECHO_LOW;
+            result.mensagem = "Timeout: ECHO não subiu (objeto muito distante ou sem reflexão)";
+            return result;
+        }
     }
-    if (digitalRead(ECHO) == LOW) {
-        return 0;  // Timeout no start
-    }
-    ping_time = micros();
 
-    // Espera echo acabar (LOW)
-    start = micros();
-    while (digitalRead(ECHO) == HIGH && (micros() - start < timeout)) {
-        // Loop até LOW ou timeout
+    // Mede duração do pulso alto
+    uint32_t fim_tempo = inicio_tempo;
+    uint32_t timeout_high = inicio_tempo;
+    
+    while (gpioRead(ECHO) == 1) {
+        fim_tempo = gpioTick();
+        // Timeout para evitar travamento
+        if ((fim_tempo - timeout_high) > TIMEOUT_US) {
+            result.status = TIMEOUT_ECHO_HIGH;
+            result.mensagem = "Timeout: ECHO não desceu (possível interferência)";
+            return result;
+        }
     }
-    if (digitalRead(ECHO) == HIGH) {
-        return 0;  // Timeout no end
+
+    // Calcula distância
+    double duracao = fim_tempo - inicio_tempo; // microssegundos
+    float distancia = (duracao * 0.0343) / 2;  // cm
+    
+    result.distancia = distancia;
+    
+    // Análise da leitura
+    if (distancia < MIN_DISTANCE) {
+        result.status = MUITO_PERTO;
+        result.mensagem = "Objeto muito próximo (< " + to_string((int)MIN_DISTANCE) + " cm) - leitura pode ser imprecisa";
     }
-    pong_time = micros();
-
-    // Calcula distância: velocidade do som ~343 m/s, divide por 2 (ida e volta), em cm
-    distance = (float)(pong_time - ping_time) * 0.01715;  // ~ (tempo em us * 0.0343 / 2) * 100 para cm
-
-    return (int)distance;
+    else if (distancia > MAX_DISTANCE) {
+        result.status = MUITO_LONGE;
+        result.mensagem = "Objeto muito distante (> " + to_string((int)MAX_DISTANCE) + " cm) - fora do alcance confiável";
+    }
+    else {
+        result.status = LEITURA_OK;
+        result.mensagem = "Leitura normal";
+    }
+    
+    return result;
 }
 
-int main(int argc, char *argv[]) {
-    printf("Teste de sensor HC-SR04 no Raspberry Pi 4\n");
-    printf("Trigger: GPIO %d, Echo: GPIO %d\n", TRIG, ECHO);
-    printf("Ignorando leituras < %d cm ou > %d cm\n\n", MIN_DISTANCE, MAX_DISTANCE);
+void imprimir_resultado(const MedicaoResult& result) {
+    switch(result.status) {
+        case LEITURA_OK:
+            cout << "Distância: " << fixed << setprecision(1) << result.distancia << " cm" << endl;
+            break;
+            
+        case MUITO_PERTO:
+            cout << "⚠️  MUITO PERTO: " << fixed << setprecision(1) << result.distancia 
+                 << " cm - " << result.mensagem << endl;
+            break;
+            
+        case MUITO_LONGE:
+            cout << "📏 MUITO LONGE: " << fixed << setprecision(1) << result.distancia 
+                 << " cm - " << result.mensagem << endl;
+            break;
+            
+        case TIMEOUT_ECHO_LOW:
+            cout << "🚫 ERRO: " << result.mensagem << endl;
+            cout << "   Possíveis causas: objeto > 4m, sem superfície refletiva, ou conexões soltas" << endl;
+            break;
+            
+        case TIMEOUT_ECHO_HIGH:
+            cout << "⚡ ERRO: " << result.mensagem << endl;
+            cout << "   Possíveis causas: interferência elétrica ou problema no sensor" << endl;
+            break;
+            
+        case ERRO_GERAL:
+            cout << "❌ ERRO GERAL na medição" << endl;
+            break;
+    }
+}
 
-    if (wiringPiSetupGpio() == -1) {  // Usa numeração BCM GPIO
-        printf("Erro ao inicializar wiringPi!\n");
+int main() {
+    if (gpioInitialise() < 0) {
+        cerr << "Erro ao iniciar pigpio" << endl;
         return 1;
     }
 
-    pinMode(TRIG, OUTPUT);
-    pinMode(ECHO, INPUT);
-    digitalWrite(TRIG, LOW);  // Trigger começa baixo
+    gpioSetMode(TRIG, PI_OUTPUT);
+    gpioSetMode(ECHO, PI_INPUT);
+    
+    cout << "=== Sensor HC-SR04 - Detecção Inteligente ===" << endl;
+    cout << "Alcance confiável: " << MIN_DISTANCE << " - " << MAX_DISTANCE << " cm" << endl;
+    cout << "Pressione Ctrl+C para sair\n" << endl;
 
-    while (1) {  // Loop infinito
-        int distance = ping();
-        if (distance > 0 && distance >= MIN_DISTANCE && distance <= MAX_DISTANCE) {
-            printf("Distância válida: %d cm\n", distance);
-            // Aqui você pode adicionar lógica para "agir apenas perto", ex: if (distance < 50) { /* faça algo */ }
+    int contador_erros = 0;
+    
+    while (true) {
+        MedicaoResult result = medir_distancia();
+        
+        cout << "[" << contador_erros << " erros] ";
+        imprimir_resultado(result);
+        
+        // Contador de erros consecutivos
+        if (result.status != LEITURA_OK) {
+            contador_erros++;
+            if (contador_erros > 5) {
+                cout << "\n⚠️  ATENÇÃO: Muitos erros consecutivos!" << endl;
+                cout << "   Verifique as conexões e alimentação do sensor" << endl;
+                contador_erros = 0; // Reset
+            }
         } else {
-            printf("Leitura inválida (fora de range ou erro)\n");
-            // Desconsidera leituras longe ou próximas demais, como pedido
+            contador_erros = 0; // Reset em leitura bem-sucedida
         }
-        sleep(1);  // Espera 1 segundo entre leituras
+        
+        usleep(500000); // 500ms
     }
 
+    gpioTerminate();
     return 0;
 }
