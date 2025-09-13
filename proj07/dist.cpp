@@ -2,13 +2,13 @@
 #include <pigpio.h>
 #include <unistd.h>
 
-#define TRIG 23
-#define ECHO 24
+#define TRIG 23  // GPIO23 (pino físico 16)
+#define ECHO 24  // GPIO24 (pino físico 18)
 
 using namespace std;
 
 float medir_distancia() {
-    // Pulso no TRIG (10 µs)
+    // Pulso no TRIG
     gpioWrite(TRIG, 0);
     gpioDelay(2);
     gpioWrite(TRIG, 1);
@@ -19,7 +19,7 @@ float medir_distancia() {
     while (gpioRead(ECHO) == 0);
     double inicio = gpioTick();
 
-    // Espera fim do pulso no ECHO
+    // Espera fim do pulso
     while (gpioRead(ECHO) == 1);
     double fim = gpioTick();
 
@@ -43,7 +43,7 @@ int main() {
 
     while (true) {
         float dist = medir_distancia();
-        if (dist >= 2 && dist <= 400) { // alcance útil do HC-SR04
+        if (dist >= 2 && dist <= 400) {
             cout << "Distancia: " << dist << " cm" << endl;
         } else {
             cout << "Fora do alcance" << endl;
