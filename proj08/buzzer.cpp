@@ -1,6 +1,6 @@
-#include <pigpio.h>
-#include <iostream>
-#include <unistd.h> // sleep
+#include <iostream>   // cout, endl
+#include <unistd.h>   // sleep()
+#include <pigpio.h>   // funções da pigpio
 
 using namespace std;
 
@@ -17,7 +17,7 @@ void buzina(int tempoSegundos) {
 void beepRe(int repeticoes, int tempoLigadoMs, int tempoDesligadoMs) {
     for (int i = 0; i < repeticoes; i++) {
         gpioWrite(BUZZER, 1);
-        gpioDelay(tempoLigadoMs * 1000);   // microssegundos
+        gpioDelay(tempoLigadoMs * 1000);   // gpioDelay usa microssegundos
         gpioWrite(BUZZER, 0);
         gpioDelay(tempoDesligadoMs * 1000);
     }
