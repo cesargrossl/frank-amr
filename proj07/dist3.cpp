@@ -144,7 +144,7 @@ int main() {
         imprimir_resultado(result);
         
         // Contador de erros consecutivos
-        if (result.status != LEITURA_OK) {
+        if (result.status != LEITURA_OK && result.status != ALERTA_PROXIMIDADE) {
             contador_erros++;
             if (contador_erros > 5) {
                 cout << "\nATENCAO: Muitos erros consecutivos!" << endl;
