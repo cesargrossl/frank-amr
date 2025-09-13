@@ -1,46 +1,59 @@
-import RPi.GPIO as GPIO
-import time
+#include <iostream>
+#include <pigpio.h>
+#include <unistd.h>
 
-# Configura os pinos
-TRIG = 23
-ECHO = 24
+#define TRIG 23
+#define ECHO 24
 
-GPIO.setmode(GPIO.BCM)
-GPIO.setup(TRIG, GPIO.OUT)
-GPIO.setup(ECHO, GPIO.IN)
+using namespace std;
 
-def medir_distancia():
-    # Gera pulso no TRIG
-    GPIO.output(TRIG, False)
-    time.sleep(0.000002)
+float medir_distancia() {
+    // Gera pulso de 10us no TRIG
+    gpioWrite(TRIG, 0);
+    gpioDelay(2);
+    gpioWrite(TRIG, 1);
+    gpioDelay(10);
+    gpioWrite(TRIG, 0);
 
-    GPIO.output(TRIG, True)
-    time.sleep(0.00001)
-    GPIO.output(TRIG, False)
+    // Espera início do pulso no ECHO
+    while (gpioRead(ECHO) == 0);
+    double inicio = gpioTick();
 
-    # Espera pelo retorno no ECHO
-    while GPIO.input(ECHO) == 0:
-        inicio = time.time()
-    while GPIO.input(ECHO) == 1:
-        fim = time.time()
+    // Espera fim do pulso no ECHO
+    while (gpioRead(ECHO) == 1);
+    double fim = gpioTick();
 
-    duracao = fim - inicio
-    distancia = (duracao * 34300) / 2  # em cm
+    // Calcula duração (em microssegundos)
+    double duracao = fim - inicio;
 
-    return distancia
+    // Converte para distância em cm
+    float distancia = (duracao * 0.0343) / 2;
 
-try:
-    while True:
-        dist = medir_distancia()
-        if dist >= 20 and dist <= 600:  # alcance do SR04M
-            print(f"Distância: {dist:.1f} cm")
-        else:
-            print("Fora do alcance")
-        time.sleep(0.5)
+    return distancia;
+}
 
-except KeyboardInterrupt:
-    print("Encerrando...")
-    GPIO.cleanup()
+int main() {
+    if (gpioInitialise() < 0) {
+        cerr << "Erro ao iniciar pigpio" << endl;
+        return 1;
+    }
+
+    gpioSetMode(TRIG, PI_OUTPUT);
+    gpioSetMode(ECHO, PI_INPUT);
+
+    while (true) {
+        float dist = medir_distancia();
+        if (dist >= 20 && dist <= 600) {
+            cout << "Distancia: " << dist << " cm" << endl;
+        } else {
+            cout << "Fora do alcance" << endl;
+        }
+        usleep(500000); // 500ms
+    }
+
+    gpioTerminate();
+    return 0;
+}
 
 
 
