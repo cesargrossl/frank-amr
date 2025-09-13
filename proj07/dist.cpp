@@ -46,3 +46,9 @@ int main() {
     gpioTerminate();
     return 0;
 }
+
+
+sudo apt-get install pigpio
+g++ dist.cpp -o dist -lpigpio -lpthread
+sudo pigpiod
+./dist
