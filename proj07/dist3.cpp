@@ -1,4 +1,6 @@
 #include <iostream>
+#include <iomanip>
+#include <string>
 #include <pigpio.h>
 #include <unistd.h>
 
@@ -46,7 +48,7 @@ MedicaoResult medir_distancia() {
         // Timeout de ~38ms para objetos muito distantes
         if ((inicio_tempo - timeout_start) > 38000) {
             result.status = TIMEOUT_ECHO_LOW;
-            result.mensagem = "Timeout: ECHO não subiu (objeto muito distante ou sem reflexão)";
+            result.mensagem = "Timeout: ECHO nao subiu (objeto muito distante ou sem reflexao)";
             return result;
         }
     }
@@ -60,7 +62,7 @@ MedicaoResult medir_distancia() {
         // Timeout para evitar travamento
         if ((fim_tempo - timeout_high) > TIMEOUT_US) {
             result.status = TIMEOUT_ECHO_HIGH;
-            result.mensagem = "Timeout: ECHO não desceu (possível interferência)";
+            result.mensagem = "Timeout: ECHO nao desceu (possivel interferencia)";
             return result;
         }
     }
@@ -74,11 +76,11 @@ MedicaoResult medir_distancia() {
     // Análise da leitura
     if (distancia < MIN_DISTANCE) {
         result.status = MUITO_PERTO;
-        result.mensagem = "Objeto muito próximo (< " + to_string((int)MIN_DISTANCE) + " cm) - leitura pode ser imprecisa";
+        result.mensagem = "Objeto muito proximo - leitura pode ser imprecisa";
     }
     else if (distancia > MAX_DISTANCE) {
         result.status = MUITO_LONGE;
-        result.mensagem = "Objeto muito distante (> " + to_string((int)MAX_DISTANCE) + " cm) - fora do alcance confiável";
+        result.mensagem = "Objeto muito distante - fora do alcance confiavel";
     }
     else {
         result.status = LEITURA_OK;
@@ -91,31 +93,31 @@ MedicaoResult medir_distancia() {
 void imprimir_resultado(const MedicaoResult& result) {
     switch(result.status) {
         case LEITURA_OK:
-            cout << "Distância: " << fixed << setprecision(1) << result.distancia << " cm" << endl;
+            cout << "Distancia: " << fixed << setprecision(1) << result.distancia << " cm" << endl;
             break;
             
         case MUITO_PERTO:
-            cout << "⚠️  MUITO PERTO: " << fixed << setprecision(1) << result.distancia 
+            cout << "MUITO PERTO: " << fixed << setprecision(1) << result.distancia 
                  << " cm - " << result.mensagem << endl;
             break;
             
         case MUITO_LONGE:
-            cout << "📏 MUITO LONGE: " << fixed << setprecision(1) << result.distancia 
+            cout << "MUITO LONGE: " << fixed << setprecision(1) << result.distancia 
                  << " cm - " << result.mensagem << endl;
             break;
             
         case TIMEOUT_ECHO_LOW:
-            cout << "🚫 ERRO: " << result.mensagem << endl;
-            cout << "   Possíveis causas: objeto > 4m, sem superfície refletiva, ou conexões soltas" << endl;
+            cout << "ERRO: " << result.mensagem << endl;
+            cout << "   Possiveis causas: objeto > 4m, sem superficie refletiva, ou conexoes soltas" << endl;
             break;
             
         case TIMEOUT_ECHO_HIGH:
-            cout << "⚡ ERRO: " << result.mensagem << endl;
-            cout << "   Possíveis causas: interferência elétrica ou problema no sensor" << endl;
+            cout << "ERRO: " << result.mensagem << endl;
+            cout << "   Possiveis causas: interferencia eletrica ou problema no sensor" << endl;
             break;
             
         case ERRO_GERAL:
-            cout << "❌ ERRO GERAL na medição" << endl;
+            cout << "ERRO GERAL na medicao" << endl;
             break;
     }
 }
@@ -129,8 +131,8 @@ int main() {
     gpioSetMode(TRIG, PI_OUTPUT);
     gpioSetMode(ECHO, PI_INPUT);
     
-    cout << "=== Sensor HC-SR04 - Detecção Inteligente ===" << endl;
-    cout << "Alcance confiável: " << MIN_DISTANCE << " - " << MAX_DISTANCE << " cm" << endl;
+    cout << "=== Sensor AJ-SR04M - Deteccao Inteligente ===" << endl;
+    cout << "Alcance confiavel: " << MIN_DISTANCE << " - " << MAX_DISTANCE << " cm" << endl;
     cout << "Pressione Ctrl+C para sair\n" << endl;
 
     int contador_erros = 0;
@@ -145,8 +147,8 @@ int main() {
         if (result.status != LEITURA_OK) {
             contador_erros++;
             if (contador_erros > 5) {
-                cout << "\n⚠️  ATENÇÃO: Muitos erros consecutivos!" << endl;
-                cout << "   Verifique as conexões e alimentação do sensor" << endl;
+                cout << "\nATENCAO: Muitos erros consecutivos!" << endl;
+                cout << "   Verifique as conexoes e alimentacao do sensor" << endl;
                 contador_erros = 0; // Reset
             }
         } else {
