@@ -1,63 +1,47 @@
-#include <iostream>
-#include <pigpio.h>
-#include <chrono>
-#include <thread>
+import RPi.GPIO as GPIO
+import time
 
-using namespace std;
+# Configura os pinos
+TRIG = 23
+ECHO = 24
 
-const int TRIG = 23; // GPIO23 (pino físico 16)
-const int ECHO = 24; // GPIO24 (pino físico 18)
+GPIO.setmode(GPIO.BCM)
+GPIO.setup(TRIG, GPIO.OUT)
+GPIO.setup(ECHO, GPIO.IN)
 
-int main() {
-    if (gpioInitialise() < 0) {
-        cerr << "Erro ao iniciar pigpio" << endl;
-        return 1;
-    }
+def medir_distancia():
+    # Gera pulso no TRIG
+    GPIO.output(TRIG, False)
+    time.sleep(0.000002)
 
-    gpioSetMode(TRIG, PI_OUTPUT);
-    gpioSetMode(ECHO, PI_INPUT);
+    GPIO.output(TRIG, True)
+    time.sleep(0.00001)
+    GPIO.output(TRIG, False)
 
-    while (true) {
-        // Pulso no TRIG
-        gpioWrite(TRIG, 0);
-        gpioDelay(2);
-        gpioWrite(TRIG, 1);
-        gpioDelay(10); // 10 µs
-        gpioWrite(TRIG, 0);
+    # Espera pelo retorno no ECHO
+    while GPIO.input(ECHO) == 0:
+        inicio = time.time()
+    while GPIO.input(ECHO) == 1:
+        fim = time.time()
 
-        // Espera início do pulso no ECHO (timeout 30ms)
-        uint32_t startTick = 0;
-        uint32_t timeout = gpioTick() + 30000; // 30.000 µs = 30 ms
-        while (gpioRead(ECHO) == 0 && gpioTick() < timeout);
-        if (gpioRead(ECHO) == 0) {
-            cout << "Distancia: fora de alcance" << endl;
-            this_thread::sleep_for(chrono::seconds(2));
-            continue;
-        }
-        startTick = gpioTick();
+    duracao = fim - inicio
+    distancia = (duracao * 34300) / 2  # em cm
 
-        // Espera fim do pulso (timeout também)
-        timeout = gpioTick() + 30000;
-        while (gpioRead(ECHO) == 1 && gpioTick() < timeout);
-        if (gpioRead(ECHO) == 1) {
-            cout << "Distancia: erro na leitura" << endl;
-            this_thread::sleep_for(chrono::seconds(2));
-            continue;
-        }
-        uint32_t endTick = gpioTick();
+    return distancia
 
-        uint32_t pulseLen = endTick - startTick; // microssegundos
-        double distancia = pulseLen / 58.0;      // cm
+try:
+    while True:
+        dist = medir_distancia()
+        if dist >= 20 and dist <= 600:  # alcance do SR04M
+            print(f"Distância: {dist:.1f} cm")
+        else:
+            print("Fora do alcance")
+        time.sleep(0.5)
 
-        cout << "Distancia: " << distancia << " cm" << endl;
+except KeyboardInterrupt:
+    print("Encerrando...")
+    GPIO.cleanup()
 
-        // mede a cada 2 segundos
-        this_thread::sleep_for(chrono::seconds(2));
-    }
-
-    gpioTerminate();
-    return 0;
-}
 
 
 
