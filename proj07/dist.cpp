@@ -8,7 +8,7 @@
 using namespace std;
 
 float medir_distancia() {
-    // Gera pulso de 10us no TRIG
+    // Pulso no TRIG (10 µs)
     gpioWrite(TRIG, 0);
     gpioDelay(2);
     gpioWrite(TRIG, 1);
@@ -23,10 +23,10 @@ float medir_distancia() {
     while (gpioRead(ECHO) == 1);
     double fim = gpioTick();
 
-    // Calcula duração (em microssegundos)
+    // Calcula duração (µs)
     double duracao = fim - inicio;
 
-    // Converte para distância em cm
+    // Converte em cm (velocidade do som = 343 m/s)
     float distancia = (duracao * 0.0343) / 2;
 
     return distancia;
@@ -43,12 +43,12 @@ int main() {
 
     while (true) {
         float dist = medir_distancia();
-        if (dist >= 20 && dist <= 600) {
+        if (dist >= 2 && dist <= 400) { // alcance útil do HC-SR04
             cout << "Distancia: " << dist << " cm" << endl;
         } else {
             cout << "Fora do alcance" << endl;
         }
-        usleep(500000); // 500ms
+        usleep(500000); // 500 ms
     }
 
     gpioTerminate();
