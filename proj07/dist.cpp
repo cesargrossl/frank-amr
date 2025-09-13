@@ -25,18 +25,29 @@ int main() {
         gpioDelay(10); // 10 µs
         gpioWrite(TRIG, 0);
 
-        // Espera início do pulso no ECHO
-        while (gpioRead(ECHO) == 0);
-        uint32_t startTick = gpioTick();
+        // Espera início do pulso no ECHO (timeout 30ms)
+        uint32_t startTick = 0;
+        uint32_t timeout = gpioTick() + 30000; // 30.000 µs = 30 ms
+        while (gpioRead(ECHO) == 0 && gpioTick() < timeout);
+        if (gpioRead(ECHO) == 0) {
+            cout << "Distancia: fora de alcance" << endl;
+            this_thread::sleep_for(chrono::seconds(2));
+            continue;
+        }
+        startTick = gpioTick();
 
-        // Espera fim do pulso
-        while (gpioRead(ECHO) == 1);
+        // Espera fim do pulso (timeout também)
+        timeout = gpioTick() + 30000;
+        while (gpioRead(ECHO) == 1 && gpioTick() < timeout);
+        if (gpioRead(ECHO) == 1) {
+            cout << "Distancia: erro na leitura" << endl;
+            this_thread::sleep_for(chrono::seconds(2));
+            continue;
+        }
         uint32_t endTick = gpioTick();
 
         uint32_t pulseLen = endTick - startTick; // microssegundos
-
-        // Conversão para centímetros (velocidade do som ~343 m/s)
-        double distancia = pulseLen / 58.0;
+        double distancia = pulseLen / 58.0;      // cm
 
         cout << "Distancia: " << distancia << " cm" << endl;
 
@@ -47,6 +58,7 @@ int main() {
     gpioTerminate();
     return 0;
 }
+
 
 
 
