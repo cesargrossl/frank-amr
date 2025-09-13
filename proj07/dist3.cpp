@@ -2,8 +2,8 @@
 #include <pigpio.h>
 #include <unistd.h>
 
-#define TRIG 23  // GPIO23 (pino físico 16)
-#define ECHO 24  // GPIO24 (pino físico 18)
+#define TRIG 23
+#define ECHO 24
 
 using namespace std;
 
@@ -15,21 +15,21 @@ float medir_distancia() {
     gpioDelay(10);
     gpioWrite(TRIG, 0);
 
-    // Espera início do pulso no ECHO (timeout de segurança)
+    // Espera início do pulso no ECHO (máx 30ms = ~5m)
     double inicio, fim;
     int timeout = 0;
     while (gpioRead(ECHO) == 0) {
         inicio = gpioTick();
-        if (++timeout > 100000) return -1; // sem leitura
+        if (++timeout > 300000) return -1; // sem resposta
     }
 
     timeout = 0;
     while (gpioRead(ECHO) == 1) {
         fim = gpioTick();
-        if (++timeout > 100000) return -1; // sem leitura
+        if (++timeout > 300000) return -1; // sem resposta
     }
 
-    double duracao = fim - inicio; // microssegundos
+    double duracao = fim - inicio; // µs
     float distancia = (duracao * 0.0343) / 2; // cm
 
     return distancia;
@@ -48,7 +48,7 @@ int main() {
         float dist = medir_distancia();
 
         if (dist < 0) {
-            cout << "Sem leitura" << endl;
+            cout << "Sem resposta do sensor" << endl;
         }
         else if (dist < 20) {
             cout << "Muito perto (<20 cm)" << endl;
@@ -60,7 +60,7 @@ int main() {
             cout << "Distancia: " << dist << " cm" << endl;
         }
 
-        usleep(500000); // 500 ms
+        usleep(500000);
     }
 
     gpioTerminate();
