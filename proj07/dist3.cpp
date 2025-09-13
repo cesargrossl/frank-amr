@@ -1,65 +1,78 @@
-#include <iostream>
-#include <pigpio.h>
-#include <unistd.h>
+#include <wiringPi.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <unistd.h>  // Para sleep
 
-#define TRIG 23  // GPIO23 (pino físico 16)
-#define ECHO 24  // GPIO24 (pino físico 18)
+#define TRIG 16  // GPIO 16 como trigger (saída)
+#define ECHO 18  // GPIO 18 como echo (entrada)
+#define MIN_DISTANCE 20  // Ignorar abaixo de 20 cm
+#define MAX_DISTANCE 400 // Ignorar acima de 400 cm
 
-using namespace std;
+static int ping() {
+    long ping_time = 0;
+    long pong_time = 0;
+    float distance = 0;
+    long timeout = 500000;  // Timeout de 0.5s (~170m max)
 
-float medir_distancia() {
-    // Pulso no TRIG
-    gpioWrite(TRIG, 0);
-    gpioDelay(2);
-    gpioWrite(TRIG, 1);
-    gpioDelay(10);
-    gpioWrite(TRIG, 0);
+    // Envia pulso trigger
+    digitalWrite(TRIG, LOW);
+    usleep(2);  // Pequeno delay
+    digitalWrite(TRIG, HIGH);
+    usleep(10); // Pulso de 10us
+    digitalWrite(TRIG, LOW);
 
-    // Espera início do pulso no ECHO (timeout máx ~38ms para 6m)
-    double inicio, fim;
-    int timeout = 0;
-    while (gpioRead(ECHO) == 0) {
-        inicio = gpioTick();
-        if (++timeout > 40000) return -1; // sem resposta
+    // Espera echo começar (HIGH)
+    long start = micros();
+    while (digitalRead(ECHO) == LOW && (micros() - start < timeout)) {
+        // Loop até HIGH ou timeout
     }
-
-    timeout = 0;
-    while (gpioRead(ECHO) == 1) {
-        fim = gpioTick();
-        if (++timeout > 40000) return -1; // sem resposta
+    if (digitalRead(ECHO) == LOW) {
+        return 0;  // Timeout no start
     }
+    ping_time = micros();
 
-    double duracao = fim - inicio; // µs
-    float distancia = (duracao * 0.0343) / 2; // cm
+    // Espera echo acabar (LOW)
+    start = micros();
+    while (digitalRead(ECHO) == HIGH && (micros() - start < timeout)) {
+        // Loop até LOW ou timeout
+    }
+    if (digitalRead(ECHO) == HIGH) {
+        return 0;  // Timeout no end
+    }
+    pong_time = micros();
 
-    return distancia;
+    // Calcula distância: velocidade do som ~343 m/s, divide por 2 (ida e volta), em cm
+    distance = (float)(pong_time - ping_time) * 0.01715;  // ~ (tempo em us * 0.0343 / 2) * 100 para cm
+
+    return (int)distance;
 }
 
-int main() {
-    if (gpioInitialise() < 0) {
-        cerr << "Erro ao iniciar pigpio" << endl;
+int main(int argc, char *argv[]) {
+    printf("Teste de sensor HC-SR04 no Raspberry Pi 4\n");
+    printf("Trigger: GPIO %d, Echo: GPIO %d\n", TRIG, ECHO);
+    printf("Ignorando leituras < %d cm ou > %d cm\n\n", MIN_DISTANCE, MAX_DISTANCE);
+
+    if (wiringPiSetupGpio() == -1) {  // Usa numeração BCM GPIO
+        printf("Erro ao inicializar wiringPi!\n");
         return 1;
     }
 
-    gpioSetMode(TRIG, PI_OUTPUT);
-    gpioSetMode(ECHO, PI_INPUT);
+    pinMode(TRIG, OUTPUT);
+    pinMode(ECHO, INPUT);
+    digitalWrite(TRIG, LOW);  // Trigger começa baixo
 
-    while (true) {
-        float dist = medir_distancia();
-
-        if (dist < 0) {
-            cout << "Sem leitura" << endl; // objeto muito longe ou sem eco
+    while (1) {  // Loop infinito
+        int distance = ping();
+        if (distance > 0 && distance >= MIN_DISTANCE && distance <= MAX_DISTANCE) {
+            printf("Distância válida: %d cm\n", distance);
+            // Aqui você pode adicionar lógica para "agir apenas perto", ex: if (distance < 50) { /* faça algo */ }
+        } else {
+            printf("Leitura inválida (fora de range ou erro)\n");
+            // Desconsidera leituras longe ou próximas demais, como pedido
         }
-        else if (dist < 20) {
-            cout << "Muito perto (<20 cm)" << endl;
-        }
-        else {
-            cout << "Distancia: " << dist << " cm" << endl;
-        }
-
-        usleep(500000); // 500 ms
+        sleep(1);  // Espera 1 segundo entre leituras
     }
 
-    gpioTerminate();
     return 0;
 }
