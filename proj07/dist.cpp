@@ -35,12 +35,13 @@ int main() {
 
         uint32_t pulseLen = endTick - startTick; // microssegundos
 
-        // Conversão para centímetros (velocidade do som ~343 m/s)
+        // Conversão para centímetros
         double distancia = pulseLen / 58.0;
 
         cout << "Distancia: " << distancia << " cm" << endl;
 
-        this_thread::sleep_for(chrono::milliseconds(500));
+        // Espera 2 segundos antes da próxima medição
+        this_thread::sleep_for(chrono::seconds(2));
     }
 
     gpioTerminate();
