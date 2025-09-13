@@ -1,17 +1,27 @@
-import RPi.GPIO as GPIO
-import time
+#include <wiringPi.h>
+#include <iostream>
+#include <unistd.h> // para sleep em microssegundos
 
-BUZZER = 18  # GPIO18 (pino físico 12)
+using namespace std;
 
-GPIO.setmode(GPIO.BCM)
-GPIO.setup(BUZZER, GPIO.OUT)
+#define BUZZER 1  // GPIO18 no esquema wiringPi (pino físico 12)
 
-print("Buzzer ligado")
-GPIO.output(BUZZER, GPIO.HIGH)
-time.sleep(1)
+int main() {
+    if (wiringPiSetup() == -1) {
+        cerr << "Erro ao inicializar wiringPi" << endl;
+        return 1;
+    }
 
-print("Buzzer desligado")
-GPIO.output(BUZZER, GPIO.LOW)
-time.sleep(1)
+    pinMode(BUZZER, OUTPUT);
 
-GPIO.cleanup()
+    // Liga buzzer 1 segundo
+    digitalWrite(BUZZER, HIGH);
+    cout << "Buzzer ligado" << endl;
+    delay(1000);
+
+    // Desliga buzzer
+    digitalWrite(BUZZER, LOW);
+    cout << "Buzzer desligado" << endl;
+
+    return 0;
+}
