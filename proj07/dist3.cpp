@@ -7,20 +7,22 @@
 #define TRIG 23  // GPIO23 (pino físico 16)
 #define ECHO 24  // GPIO24 (pino físico 18)
 
-// Constantes do HC-SR04
-#define MIN_DISTANCE 2.0    // Distância mínima confiável (cm)
-#define MAX_DISTANCE 400.0  // Distância máxima teórica (cm)
-#define TIMEOUT_US 30000    // Timeout em microssegundos (~5m)
+// Constantes do AJ-SR04M
+#define MIN_DISTANCE 20.0   // Distância mínima confiável (cm) 
+#define MAX_DISTANCE 450.0  // Distância máxima teórica (cm)
+#define TIMEOUT_US 35000    // Timeout em microssegundos (~6m)
+#define ALERTA_DISTANCIA 30.0  // Distância para alerta de proximidade (cm)
 
 using namespace std;
 
 enum SensorStatus {
-    LEITURA_OK,
-    MUITO_PERTO,
-    MUITO_LONGE,
-    TIMEOUT_ECHO_LOW,
-    TIMEOUT_ECHO_HIGH,
-    ERRO_GERAL
+    LEITURA_OK = 0,
+    ALERTA_PROXIMIDADE = 1,
+    MUITO_PERTO = 2,
+    MUITO_LONGE = 3,
+    TIMEOUT_ECHO_LOW = 4,
+    TIMEOUT_ECHO_HIGH = 5,
+    ERRO_GERAL = 6
 };
 
 struct MedicaoResult {
@@ -30,7 +32,10 @@ struct MedicaoResult {
 };
 
 MedicaoResult medir_distancia() {
-    MedicaoResult result = {0.0, ERRO_GERAL, ""};
+    MedicaoResult result;
+    result.distancia = 0.0;
+    result.status = ERRO_GERAL;
+    result.mensagem = "";
     
     // Pulso no TRIG
     gpioWrite(TRIG, 0);
@@ -45,8 +50,8 @@ MedicaoResult medir_distancia() {
     
     while (gpioRead(ECHO) == 0) {
         inicio_tempo = gpioTick();
-        // Timeout de ~38ms para objetos muito distantes
-        if ((inicio_tempo - timeout_start) > 38000) {
+        // Timeout de ~45ms para objetos muito distantes (AJ-SR04M)
+        if ((inicio_tempo - timeout_start) > 45000) {
             result.status = TIMEOUT_ECHO_LOW;
             result.mensagem = "Timeout: ECHO nao subiu (objeto muito distante ou sem reflexao)";
             return result;
@@ -78,6 +83,10 @@ MedicaoResult medir_distancia() {
         result.status = MUITO_PERTO;
         result.mensagem = "Objeto muito proximo - leitura pode ser imprecisa";
     }
+    else if (distancia <= ALERTA_DISTANCIA) {
+        result.status = ALERTA_PROXIMIDADE;
+        result.mensagem = "ALERTA! Objeto detectado proximo";
+    }
     else if (distancia > MAX_DISTANCE) {
         result.status = MUITO_LONGE;
         result.mensagem = "Objeto muito distante - fora do alcance confiavel";
@@ -96,6 +105,13 @@ void imprimir_resultado(const MedicaoResult& result) {
             cout << "Distancia: " << fixed << setprecision(1) << result.distancia << " cm" << endl;
             break;
             
+        case ALERTA_PROXIMIDADE:
+            cout << ">>> ALERTA! OBJETO PROXIMO <<<" << endl;
+            cout << ">>> Distancia: " << fixed << setprecision(1) << result.distancia 
+                 << " cm (< 30cm) <<<" << endl;
+            cout << ">>> " << result.mensagem << " <<<" << endl;
+            break;
+            
         case MUITO_PERTO:
             cout << "MUITO PERTO: " << fixed << setprecision(1) << result.distancia 
                  << " cm - " << result.mensagem << endl;
@@ -108,7 +124,7 @@ void imprimir_resultado(const MedicaoResult& result) {
             
         case TIMEOUT_ECHO_LOW:
             cout << "ERRO: " << result.mensagem << endl;
-            cout << "   Possiveis causas: objeto > 4m, sem superficie refletiva, ou conexoes soltas" << endl;
+            cout << "   Possiveis causas: objeto > 4.5m, sem superficie refletiva, ou conexoes soltas" << endl;
             break;
             
         case TIMEOUT_ECHO_HIGH:
@@ -133,6 +149,7 @@ int main() {
     
     cout << "=== Sensor AJ-SR04M - Deteccao Inteligente ===" << endl;
     cout << "Alcance confiavel: " << MIN_DISTANCE << " - " << MAX_DISTANCE << " cm" << endl;
+    cout << "ALERTA DE PROXIMIDADE: < " << ALERTA_DISTANCIA << " cm" << endl;
     cout << "Pressione Ctrl+C para sair\n" << endl;
 
     int contador_erros = 0;
@@ -143,7 +160,7 @@ int main() {
         cout << "[" << contador_erros << " erros] ";
         imprimir_resultado(result);
         
-        // Contador de erros consecutivos
+        // Contador de erros consecutivos  
         if (result.status != LEITURA_OK && result.status != ALERTA_PROXIMIDADE) {
             contador_erros++;
             if (contador_erros > 5) {
