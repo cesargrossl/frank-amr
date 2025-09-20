@@ -13,8 +13,7 @@ void buzina(int tempoSegundos) {
     gpioWrite(BUZZER, 0);
 }
 
-
-// Função: bip de ré (liga/desliga em loop)
+// Função: bip de ré (liga/desliga em loop), test
 void beepRe(int repeticoes, int tempoLigadoMs, int tempoDesligadoMs) {
     for (int i = 0; i < repeticoes; i++) {
         gpioWrite(BUZZER, 1);
