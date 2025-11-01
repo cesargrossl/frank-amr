@@ -240,3 +240,12 @@ g++ -std=c++17 motor_lidar_gpiod.cpp -o motor_lidar \
   -I../rplidar_sdk/sdk/include \
   -L../rplidar_sdk/output/Linux/Release \
   -lsl_lidar_sdk -lgpiod -lpthread -lrt
+
+
+
+  # manual
+sudo ./motor_lidar demo
+sudo ./motor_lidar frente 2
+
+# autônomo (evita obstáculo < 30cm)
+sudo ./motor_lidar auto
