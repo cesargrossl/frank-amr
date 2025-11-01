@@ -148,3 +148,10 @@ int main(int argc, char** argv){
     parar();
     return 0;
 }
+
+
+
+g++ -std=c++17 motor_lidar_gpiod.cpp -o motor_lidar \
+  -I../rplidar_sdk/sdk/include \
+  -L../rplidar_sdk/output/Linux/Release \
+  -lsl_lidar_sdk -pthread -lrt -lgpiod
