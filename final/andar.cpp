@@ -20,6 +20,10 @@ struct Motor {
     gpiod_request_config* rcfg = nullptr;
     gpiod_line_request* req = nullptr;
 
+    // FIXO: ambos motores invertidos para adequar ao seu hardware
+    bool invA = true;
+    bool invB = true;
+
     unsigned int offsets[4] = {IN1, IN2, IN3, IN4};
     gpiod_line_value vals[4] = {
         GPIOD_LINE_VALUE_INACTIVE, GPIOD_LINE_VALUE_INACTIVE,
@@ -59,25 +63,30 @@ struct Motor {
         return true;
     }
 
-    void set(bool a1,bool a2,bool b1,bool b2) {
-        vals[0] = a1 ? GPIOD_LINE_VALUE_ACTIVE   : GPIOD_LINE_VALUE_INACTIVE;
-        vals[1] = a2 ? GPIOD_LINE_VALUE_ACTIVE   : GPIOD_LINE_VALUE_INACTIVE;
-        vals[2] = b1 ? GPIOD_LINE_VALUE_ACTIVE   : GPIOD_LINE_VALUE_INACTIVE;
-        vals[3] = b2 ? GPIOD_LINE_VALUE_ACTIVE   : GPIOD_LINE_VALUE_INACTIVE;
-        // API v2: SEM o parâmetro de contagem
+    void set_raw(bool a1,bool a2,bool b1,bool b2) {
+        vals[0] = a1 ? GPIOD_LINE_VALUE_ACTIVE   : GPIOD_LINE_VALUE_INACTIVE; // IN1
+        vals[1] = a2 ? GPIOD_LINE_VALUE_ACTIVE   : GPIOD_LINE_VALUE_INACTIVE; // IN2
+        vals[2] = b1 ? GPIOD_LINE_VALUE_ACTIVE   : GPIOD_LINE_VALUE_INACTIVE; // IN3
+        vals[3] = b2 ? GPIOD_LINE_VALUE_ACTIVE   : GPIOD_LINE_VALUE_INACTIVE; // IN4
         if (gpiod_line_request_set_values(req, vals) < 0) {
             std::fprintf(stderr, "Aviso: falha ao setar valores (pinos ocupados?)\n");
         }
     }
 
+    // Aplica inversão por software FIXA (para deixar 'frente' correta no seu setup)
+    void set(bool a1,bool a2,bool b1,bool b2) {
+        if (invA) std::swap(a1, a2);
+        if (invB) std::swap(b1, b2);
+        set_raw(a1,a2,b1,b2);
+    }
+
     void parar()     { set(false,false,false,false); }
-    void frente()    { set(true,false,  true,false); }
+    void frente()    { set(true,false,  true,false); }   // agora realmente "pra frente" no seu hardware
     void tras()      { set(false,true,  false,true); }
-    void girar_esq() { set(true,false,  false,true); }
-    void girar_dir() { set(false,true,  true,false); }
+    void girar_esq() { set(true,false,  false,true); }   // A fwd, B rev
+    void girar_dir() { set(false,true,  true,false); }   // A rev, B fwd
 
     ~Motor() {
-        // Garante parada
         if (req) {
             vals[0]=vals[1]=vals[2]=vals[3]=GPIOD_LINE_VALUE_INACTIVE;
             gpiod_line_request_set_values(req, vals);
@@ -132,6 +141,7 @@ int main(int argc, char** argv) {
 
     return 0;
 }
+
 //g++ -std=c++17 final.cpp -o motor -lgpiod
 // como root OU após adicionar seu usuário ao grupo gpio:
 //   sudo usermod -aG gpio $USER  (depois faça logout/login)
