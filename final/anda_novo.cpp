@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <string>
 #include <thread>
 #include <chrono>
@@ -7,7 +8,7 @@
 
 using namespace std::chrono_literals;
 
-// Somente direção (TB6612FNG)
+// Direção (TB6612FNG) - BCM
 static const unsigned int AIN1 = 17; // Motor A
 static const unsigned int AIN2 = 27; // Motor A
 static const unsigned int BIN1 = 22; // Motor B
@@ -20,7 +21,7 @@ struct Motor {
     gpiod_request_config* rcfg = nullptr;
     gpiod_line_request* req = nullptr;
 
-    // Inverta aqui se seu “frente” sair ao contrário
+    // Inverta se "frente" sair ao contrário
     bool invA = true;
     bool invB = true;
 
@@ -30,10 +31,10 @@ struct Motor {
         GPIOD_LINE_VALUE_INACTIVE, GPIOD_LINE_VALUE_INACTIVE
     };
 
-    bool init(const char* chip_path="/dev/gpiochip0") {
+    bool init(const char* chip_path) {
         chip = gpiod_chip_open(chip_path);
         if (!chip) {
-            std::fprintf(stderr, "Erro: não foi possível abrir %s (use sudo ou grupo gpio).\n", chip_path);
+            std::fprintf(stderr, "Erro: não foi possível abrir %s (use sudo ou entre no grupo gpio).\n", chip_path);
             return false;
         }
 
@@ -79,7 +80,6 @@ struct Motor {
         set_raw(a1,a2,b1,b2);
     }
 
-    // Movimentos básicos (PWMA/PWMB e STBY DEVEM estar em HIGH no hardware)
     void parar()     { set(false,false, false,false); }
     void frente()    { set(true,false,  true,false); }
     void tras()      { set(false,true,  false,true); }
@@ -101,19 +101,27 @@ struct Motor {
 
 static void usage(const char* prog) {
     std::printf(
-        "Uso: sudo %s <cmd> [tempo_s]\n"
+        "Uso: sudo %s <cmd> [tempo_s] [--chip /dev/gpiochipN]\n"
         "cmd = frente | tras | esq | dir | parar | demo\n"
-        "Ex.: sudo %s frente 2\n"
+        "Ex.: sudo %s frente 2 --chip /dev/gpiochip4\n"
         "     sudo %s demo\n", prog, prog, prog
     );
 }
 
 int main(int argc, char** argv) {
     std::string cmd = (argc >= 2) ? argv[1] : "demo";
-    double t = (argc >= 3) ? std::atof(argv[2]) : 1.0;
+    double t = (argc >= 3 && argv[2][0] != '-') ? std::atof(argv[2]) : 1.0;
+
+    // Default bom para Raspberry Pi 5:
+    const char* chip_path = "/dev/gpiochip4";
+    for (int i = 2; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--chip") == 0 && i+1 < argc) {
+            chip_path = argv[i+1];
+        }
+    }
 
     Motor m;
-    if (!m.init()) return 1;
+    if (!m.init(chip_path)) return 1;
 
     auto run_for = [&](auto fn, double sec){
         fn();
@@ -138,6 +146,7 @@ int main(int argc, char** argv) {
     }
     return 0;
 }
+
 
 // Compilar:
 // g++ -std=c++17 motor_tb6612_4pins.cpp -o motor_tb6612_4pins -lgpiod
