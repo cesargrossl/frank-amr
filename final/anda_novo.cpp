@@ -1,4 +1,3 @@
-
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -8,18 +7,11 @@
 
 using namespace std::chrono_literals;
 
-// ===== TB6612FNG - GPIO (BCM) =====
-// Motor A (direção)
-static const unsigned int AIN1 = 17;
-static const unsigned int AIN2 = 27;
-// Motor B (direção)
-static const unsigned int BIN1 = 22;
-static const unsigned int BIN2 = 23;
-// PWM (aqui apenas mantidos em HIGH para “habilitar sempre”)
-static const unsigned int PWMA = 18;  // pode ser PWM hardware no futuro
-static const unsigned int PWMB = 13;  // pode ser PWM hardware no futuro
-// Standby
-static const unsigned int STBY = 24;
+// Somente direção (TB6612FNG)
+static const unsigned int AIN1 = 17; // Motor A
+static const unsigned int AIN2 = 27; // Motor A
+static const unsigned int BIN1 = 22; // Motor B
+static const unsigned int BIN2 = 23; // Motor B
 
 struct Motor {
     gpiod_chip* chip = nullptr;
@@ -28,28 +20,20 @@ struct Motor {
     gpiod_request_config* rcfg = nullptr;
     gpiod_line_request* req = nullptr;
 
-    // Inversões por software (mantenho como TRUE se seu hardware estiver invertido)
+    // Inverta aqui se seu “frente” sair ao contrário
     bool invA = true;
     bool invB = true;
 
-    // offsets: ordem fixa -> [AIN1, AIN2, BIN1, BIN2, PWMA, PWMB, STBY]
-    unsigned int offsets[7] = { AIN1, AIN2, BIN1, BIN2, PWMA, PWMB, STBY };
-
-    // valores de saída correspondentes aos offsets acima
-    gpiod_line_value vals[7] = {
-        GPIOD_LINE_VALUE_INACTIVE, // AIN1
-        GPIOD_LINE_VALUE_INACTIVE, // AIN2
-        GPIOD_LINE_VALUE_INACTIVE, // BIN1
-        GPIOD_LINE_VALUE_INACTIVE, // BIN2
-        GPIOD_LINE_VALUE_INACTIVE, // PWMA
-        GPIOD_LINE_VALUE_INACTIVE, // PWMB
-        GPIOD_LINE_VALUE_INACTIVE  // STBY
+    unsigned int offsets[4] = { AIN1, AIN2, BIN1, BIN2 };
+    gpiod_line_value vals[4] = {
+        GPIOD_LINE_VALUE_INACTIVE, GPIOD_LINE_VALUE_INACTIVE,
+        GPIOD_LINE_VALUE_INACTIVE, GPIOD_LINE_VALUE_INACTIVE
     };
 
     bool init(const char* chip_path="/dev/gpiochip0") {
         chip = gpiod_chip_open(chip_path);
         if (!chip) {
-            std::fprintf(stderr, "Erro: não foi possível abrir %s (use sudo ou entre no grupo gpio).\n", chip_path);
+            std::fprintf(stderr, "Erro: não foi possível abrir %s (use sudo ou grupo gpio).\n", chip_path);
             return false;
         }
 
@@ -60,37 +44,23 @@ struct Motor {
 
         lcfg = gpiod_line_config_new();
         if (!lcfg) { std::fprintf(stderr, "Erro: gpiod_line_config_new\n"); return false; }
-        if (gpiod_line_config_add_line_settings(lcfg, offsets, 7, st) < 0) {
+        if (gpiod_line_config_add_line_settings(lcfg, offsets, 4, st) < 0) {
             std::fprintf(stderr, "Erro: gpiod_line_config_add_line_settings\n");
             return false;
         }
 
         rcfg = gpiod_request_config_new();
         if (!rcfg) { std::fprintf(stderr, "Erro: gpiod_request_config_new\n"); return false; }
-        gpiod_request_config_set_consumer(rcfg, "tb6612-gpiod");
+        gpiod_request_config_set_consumer(rcfg, "tb6612-4wires");
 
         req = gpiod_chip_request_lines(chip, rcfg, lcfg);
         if (!req) {
-            std::fprintf(stderr, "Erro: gpiod_chip_request_lines (verifique permissões e se os pinos não estão em uso)\n");
+            std::fprintf(stderr, "Erro: gpiod_chip_request_lines (permissões? pinos em uso?)\n");
             return false;
         }
 
-        // Coloca tudo em nível seguro
         parar();
-
-        // Habilita o driver: PWMA=HIGH, PWMB=HIGH, STBY=HIGH
-        enable_driver(true);
-
         return true;
-    }
-
-    void enable_driver(bool en) {
-        vals[4] = en ? GPIOD_LINE_VALUE_ACTIVE   : GPIOD_LINE_VALUE_INACTIVE; // PWMA
-        vals[5] = en ? GPIOD_LINE_VALUE_ACTIVE   : GPIOD_LINE_VALUE_INACTIVE; // PWMB
-        vals[6] = en ? GPIOD_LINE_VALUE_ACTIVE   : GPIOD_LINE_VALUE_INACTIVE; // STBY
-        if (gpiod_line_request_set_values(req, vals) < 0) {
-            std::fprintf(stderr, "Aviso: falha ao setar PWMA/PWMB/STBY (pinos ocupados?)\n");
-        }
     }
 
     void set_raw(bool a1,bool a2,bool b1,bool b2) {
@@ -103,32 +73,29 @@ struct Motor {
         }
     }
 
-    // Aplica inversão por software para “frente” ficar correta no seu robô
     void set(bool a1,bool a2,bool b1,bool b2) {
         if (invA) std::swap(a1, a2);
         if (invB) std::swap(b1, b2);
         set_raw(a1,a2,b1,b2);
     }
 
-    // Movimentos básicos (com PWMA/PWMB já em HIGH)
+    // Movimentos básicos (PWMA/PWMB e STBY DEVEM estar em HIGH no hardware)
     void parar()     { set(false,false, false,false); }
-    void frente()    { set(true,false,  true,false); }   // A fwd, B fwd
-    void tras()      { set(false,true,  false,true); }   // A rev, B rev
-    void girar_esq() { set(true,false,  false,true); }   // A fwd, B rev
-    void girar_dir() { set(false,true,  true,false); }   // A rev, B fwd
+    void frente()    { set(true,false,  true,false); }
+    void tras()      { set(false,true,  false,true); }
+    void girar_esq() { set(true,false,  false,true); }
+    void girar_dir() { set(false,true,  true,false); }
 
     ~Motor() {
         if (req) {
-            // desabilita: para motores e coloca PWMs/STBY baixos
             vals[0]=vals[1]=vals[2]=vals[3]=GPIOD_LINE_VALUE_INACTIVE;
-            vals[4]=vals[5]=vals[6]=GPIOD_LINE_VALUE_INACTIVE;
             gpiod_line_request_set_values(req, vals);
+            gpiod_line_request_release(req);
         }
-        if (req)  { gpiod_line_request_release(req); }
-        if (rcfg) { gpiod_request_config_free(rcfg); }
-        if (lcfg) { gpiod_line_config_free(lcfg); }
-        if (st)   { gpiod_line_settings_free(st); }
-        if (chip) { gpiod_chip_close(chip); }
+        if (rcfg) gpiod_request_config_free(rcfg);
+        if (lcfg) gpiod_line_config_free(lcfg);
+        if (st)   gpiod_line_settings_free(st);
+        if (chip) gpiod_chip_close(chip);
     }
 };
 
@@ -146,9 +113,7 @@ int main(int argc, char** argv) {
     double t = (argc >= 3) ? std::atof(argv[2]) : 1.0;
 
     Motor m;
-    if (!m.init()) {
-        return 1;
-    }
+    if (!m.init()) return 1;
 
     auto run_for = [&](auto fn, double sec){
         fn();
@@ -171,9 +136,19 @@ int main(int argc, char** argv) {
         usage(argv[0]);
         return 2;
     }
-
     return 0;
 }
+
+// Compilar:
+// g++ -std=c++17 motor_tb6612_4pins.cpp -o motor_tb6612_4pins -lgpiod
+//
+// Executar (como root ou usuário no grupo gpio):
+//   sudo ./motor_tb6612_4pins frente 2
+//   sudo ./motor_tb6612_4pins dir 1
+//   sudo ./motor_tb6612_4pins tras 1.5
+//   sudo ./motor_tb6612_4pins parar
+//   sudo ./motor_tb6612_4pins demo
+
 
 // Compilar:
 // g++ -std=c++17 motor_tb6612.cpp -o motor_tb6612 -lgpiod
