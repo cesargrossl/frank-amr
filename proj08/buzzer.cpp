@@ -2,6 +2,7 @@
 #include <unistd.h>   // sleep()
 #include <pigpio.h>   // funções da pigpio
 
+
 using namespace std;
 
 #define BUZZER 18  // GPIO18 (pino físico 12)
