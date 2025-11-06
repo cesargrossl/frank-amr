@@ -15,20 +15,14 @@ static const unsigned int IN4 = 23; // Motor B
 
 struct Motor {
     gpiod_chip* chip = nullptr;
-    gpiod_line_settings* st = nullptr;
-    gpiod_line_config* lcfg = nullptr;
-    gpiod_request_config* rcfg = nullptr;
-    gpiod_line_request* req = nullptr;
+    gpiod_line* l_in1 = nullptr;
+    gpiod_line* l_in2 = nullptr;
+    gpiod_line* l_in3 = nullptr;
+    gpiod_line* l_in4 = nullptr;
 
     // FIXO: ambos motores invertidos para adequar ao seu hardware
     bool invA = true;
     bool invB = true;
-
-    unsigned int offsets[4] = {IN1, IN2, IN3, IN4};
-    gpiod_line_value vals[4] = {
-        GPIOD_LINE_VALUE_INACTIVE, GPIOD_LINE_VALUE_INACTIVE,
-        GPIOD_LINE_VALUE_INACTIVE, GPIOD_LINE_VALUE_INACTIVE
-    };
 
     bool init(const char* chip_path="/dev/gpiochip0") {
         chip = gpiod_chip_open(chip_path);
@@ -37,25 +31,22 @@ struct Motor {
             return false;
         }
 
-        st = gpiod_line_settings_new();
-        if (!st) { std::fprintf(stderr, "Erro: gpiod_line_settings_new\n"); return false; }
-        gpiod_line_settings_set_direction(st, GPIOD_LINE_DIRECTION_OUTPUT);
-        gpiod_line_settings_set_output_value(st, GPIOD_LINE_VALUE_INACTIVE);
-
-        lcfg = gpiod_line_config_new();
-        if (!lcfg) { std::fprintf(stderr, "Erro: gpiod_line_config_new\n"); return false; }
-        if (gpiod_line_config_add_line_settings(lcfg, offsets, 4, st) < 0) {
-            std::fprintf(stderr, "Erro: gpiod_line_config_add_line_settings\n");
+        // pega as linhas
+        l_in1 = gpiod_chip_get_line(chip, IN1);
+        l_in2 = gpiod_chip_get_line(chip, IN2);
+        l_in3 = gpiod_chip_get_line(chip, IN3);
+        l_in4 = gpiod_chip_get_line(chip, IN4);
+        if (!l_in1 || !l_in2 || !l_in3 || !l_in4) {
+            std::fprintf(stderr, "Erro: falha ao obter linhas GPIO.\n");
             return false;
         }
 
-        rcfg = gpiod_request_config_new();
-        if (!rcfg) { std::fprintf(stderr, "Erro: gpiod_request_config_new\n"); return false; }
-        gpiod_request_config_set_consumer(rcfg, "motor-gpiod");
-
-        req = gpiod_chip_request_lines(chip, rcfg, lcfg);
-        if (!req) {
-            std::fprintf(stderr, "Erro: gpiod_chip_request_lines (verifique permissões e se os pinos não estão em uso)\n");
+        // solicita como saída com valor inicial 0
+        if (gpiod_line_request_output(l_in1, "motor-gpiod", 0) < 0 ||
+            gpiod_line_request_output(l_in2, "motor-gpiod", 0) < 0 ||
+            gpiod_line_request_output(l_in3, "motor-gpiod", 0) < 0 ||
+            gpiod_line_request_output(l_in4, "motor-gpiod", 0) < 0) {
+            std::fprintf(stderr, "Erro: falha ao solicitar linhas como saída (ocupadas/permissão?).\n");
             return false;
         }
 
@@ -64,12 +55,12 @@ struct Motor {
     }
 
     void set_raw(bool a1,bool a2,bool b1,bool b2) {
-        vals[0] = a1 ? GPIOD_LINE_VALUE_ACTIVE   : GPIOD_LINE_VALUE_INACTIVE; // IN1
-        vals[1] = a2 ? GPIOD_LINE_VALUE_ACTIVE   : GPIOD_LINE_VALUE_INACTIVE; // IN2
-        vals[2] = b1 ? GPIOD_LINE_VALUE_ACTIVE   : GPIOD_LINE_VALUE_INACTIVE; // IN3
-        vals[3] = b2 ? GPIOD_LINE_VALUE_ACTIVE   : GPIOD_LINE_VALUE_INACTIVE; // IN4
-        if (gpiod_line_request_set_values(req, vals) < 0) {
-            std::fprintf(stderr, "Aviso: falha ao setar valores (pinos ocupados?)\n");
+        // set individual (v1 não tem request_set_values)
+        if (gpiod_line_set_value(l_in1, a1?1:0) < 0 ||
+            gpiod_line_set_value(l_in2, a2?1:0) < 0 ||
+            gpiod_line_set_value(l_in3, b1?1:0) < 0 ||
+            gpiod_line_set_value(l_in4, b2?1:0) < 0) {
+            std::fprintf(stderr, "Aviso: falha ao setar valores (pinos ocupados?).\n");
         }
     }
 
@@ -81,21 +72,20 @@ struct Motor {
     }
 
     void parar()     { set(false,false,false,false); }
-    void frente()    { set(true,false,  true,false); }   // agora realmente "pra frente" no seu hardware
+    void frente()    { set(true,false,  true,false); }   // agora realmente "pra frente"
     void tras()      { set(false,true,  false,true); }
     void girar_esq() { set(true,false,  false,true); }   // A fwd, B rev
     void girar_dir() { set(false,true,  true,false); }   // A rev, B fwd
 
     ~Motor() {
-        if (req) {
-            vals[0]=vals[1]=vals[2]=vals[3]=GPIOD_LINE_VALUE_INACTIVE;
-            gpiod_line_request_set_values(req, vals);
-        }
-        if (req)  { gpiod_line_request_release(req); }
-        if (rcfg) { gpiod_request_config_free(rcfg); }
-        if (lcfg) { gpiod_line_config_free(lcfg); }
-        if (st)   { gpiod_line_settings_free(st); }
-        if (chip) { gpiod_chip_close(chip); }
+        // zera pinos
+        auto safe_set = [&](gpiod_line* l){ if (l) gpiod_line_set_value(l, 0); };
+        safe_set(l_in1); safe_set(l_in2); safe_set(l_in3); safe_set(l_in4);
+
+        auto release = [&](gpiod_line* l){ if (l) gpiod_line_release(l); };
+        release(l_in1); release(l_in2); release(l_in3); release(l_in4);
+
+        if (chip) gpiod_chip_close(chip);
     }
 };
 
