@@ -1,9 +1,15 @@
-ros2 run tf2_ros static_transform_publisher 0 0 0 0 0 0 base_link laser
+sudo apt update
+sudo apt install -y ros-humble-slam-toolbox ros-humble-teleop-twist-keyboard \
+  ros-humble-nav2-map-server ros-humble-tf2-tools
+sudo apt update
+sudo apt install -y ros-humble-slam-toolbox ros-humble-teleop-twist-keyboard \
+  ros-humble-nav2-map-server ros-humble-tf2-tools
+
 
 
 1) Terminal 1 — LIDAR (deixe rodando)
 source /opt/ros/humble/setup.bash
-source ~/ros2_ws/install/setup.bash
+source ~/ros2_ws/install/setup.bash 
 
 ros2 run sllidar_ros2 sllidar_node --ros-args \
   -p serial_port:=/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_be73ade4325aee118bfe84dc8ffcc75d-if00-port0 \
@@ -18,3 +24,12 @@ source /opt/ros/humble/setup.bash
 source ~/ros2_ws/install/setup.bash
 
 ros2 launch slam_toolbox online_async_launch.py
+
+
+# Terminal 3 - Verificar tópicos
+clear
+
+# Terminal 4 - Teleop
+source /opt/ros/humble/setup.bash
+source ~/ros2_ws/install/setup.bash
+ros2 run teleop_twist_keyboard teleop_twist_keyboard
