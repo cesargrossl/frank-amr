@@ -1,0 +1,59 @@
+sudo apt update && sudo apt upgrade -y
+sudo apt install -y software-properties-common
+sudo add-apt-repository universe -y
+
+# Repositório do ROS 2 (usa ros2-apt-source, recomendação oficial)
+sudo apt update
+sudo apt install -y curl gnupg lsb-release
+sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
+
+sudo apt update
+sudo apt install -y ros-humble-desktop
+echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
+source ~/.bashrc
+
+
+
+
+proximo passo
+
+sudo apt update
+sudo apt install -y curl gnupg lsb-release
+sudo curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key -o /usr/share/keyrings/ros-archive-keyring.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) main" | sudo tee /etc/apt/sources.list.d/ros2.list > /dev/null
+
+sudo apt update
+sudo apt install -y ros-humble-desktop
+echo "source /opt/ros/humble/setup.bash" >> ~/.bashrc
+source ~/.bashrc
+
+
+proximo passo
+sudo apt update
+sudo apt install -y build-essential git python3-colcon-common-extensions
+
+
+
+1) Criar o workspace e preparar ambiente
+# Workspace
+mkdir -p ~/ros2_ws/src
+cd ~/ros2_ws
+colcon build --symlink-install
+echo "source ~/ros2_ws/install/setup.bash" >> ~/.bashrc
+source ~/.bashrc
+
+
+2) Driver do RPLIDAR (ROS 2) — sllidar_ros2
+cd ~/ros2_ws/src
+git clone https://github.com/Slamtec/sllidar_ros2.git
+cd ~/ros2_ws
+colcon build --symlink-install
+# Permissão para portas seriais
+sudo usermod -aG dialout $USER
+# (faça logout/login ou reboot para aplicar o grupo 'dialout')
+
+
+Conecte o RPLIDAR; normalmente ele aparece como /dev/ttyUSB0:
+
+ls -l /dev/ttyUSB* /dev/ttyACM* 2>/dev/null
