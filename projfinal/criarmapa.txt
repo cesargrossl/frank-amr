@@ -1,9 +1,12 @@
 sudo apt update
-sudo apt install -y ros-humble-slam-toolbox ros-humble-teleop-twist-keyboard \
-  ros-humble-nav2-map-server ros-humble-tf2-tools
-sudo apt update
-sudo apt install -y ros-humble-slam-toolbox ros-humble-teleop-twist-keyboard \
-  ros-humble-nav2-map-server ros-humble-tf2-tools
+sudo apt install -y \
+  ros-humble-slam-toolbox \
+  ros-humble-teleop-twist-keyboard \
+  ros-humble-nav2-map-server \
+  ros-humble-tf2-tools
+
+
+Salvar mapa
 
 
 
@@ -27,9 +30,26 @@ ros2 launch slam_toolbox online_async_launch.py
 
 
 # Terminal 3 - Verificar tópicos
-clear
-
-# Terminal 4 - Teleop
 source /opt/ros/humble/setup.bash
 source ~/ros2_ws/install/setup.bash
+
 ros2 run teleop_twist_keyboard teleop_twist_keyboard
+
+TErminal 4
+
+source /opt/ros/humble/setup.bash
+ros2 topic list
+```
+
+**Você deve ver algo como:**
+```
+/cmd_vel
+/map
+/scan
+/tf
+/tf_static
+/slam_toolbox/graph_visualizationsource /opt/ros/humble/setup.bash
+ros2 topic list
+```
+
+ros2 topic echo /scan --once
