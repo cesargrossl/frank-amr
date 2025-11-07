@@ -60,4 +60,102 @@ ls -l /dev/ttyUSB* /dev/ttyACM* 2>/dev/null
 
 
 ***********************
-NOVO
+1) Confirma os 3 processos
+
+Terminal 1 (LIDAR C1): (deixa rodando)
+
+ros2 launch sllidar_ros2 sllidar_c1_launch.py \
+  serial_port:=/dev/ttyUSB0 channel_type:=serial serial_baudrate:=460800 frame_id:=laser
+
+
+Terminal 2 (TF estática): (deixa rodando)
+
+ros2 run tf2_ros static_transform_publisher 0 0 0 0 0 0 base_link laser
+
+
+Terminal 3 (SLAM sem odometria): (deixa rodando)
+
+ros2 run slam_toolbox async_slam_toolbox_node --ros-args \
+  -p odom_frame:=base_link \
+  -p base_frame:=base_link \
+  -p map_frame:=map \
+  -p scan_topic:=/scan
+
+2) Mostra no RViz (o que está faltando aí)
+
+No painel esquerdo: Global Options → Fixed Frame = base_link (ou laser).
+
+Clica Add → By topic → /scan → LaserScan (vai aparecer o círculo/pontos do LIDAR).
+
+Começa a mover o sensor/robô (girar/andar).
+
+Quando o mapa começar a sair, troca o Fixed Frame para map.
+
+Clica Add → Map e escolhe o tópico /map.
+
+
+
+***************************************
+
+✅ Terminal 1 — LIDAR
+source /opt/ros/humble/setup.bash
+source ~/ros2_ws/install/setup.bash
+
+ros2 launch sllidar_ros2 sllidar_c1_launch.py \
+  serial_port:=/dev/ttyUSB0 \
+  channel_type:=serial \
+  serial_baudrate:=460800 \
+  frame_id:=laser
+
+✅ Terminal 2 — TF (ligação base_link → laser)
+
+(se não rodar isso, o mapa não aparece!)
+
+source /opt/ros/humble/setup.bash
+
+ros2 run tf2_ros static_transform_publisher 0 0 0 0 0 0 base_link laser
+
+✅ Terminal 3 — SLAM Toolbox
+source /opt/ros/humble/setup.bash
+
+ros2 run slam_toolbox async_slam_toolbox_node --ros-args \
+  -p scan_topic:=/scan \
+  -p base_frame:=base_link \
+  -p odom_frame:=base_link \
+  -p map_frame:=map
+
+✅ Abrir o RViz
+
+no ambiente gráfico (WTS), abra um terminal e execute:
+
+source /opt/ros/humble/setup.bash
+LIBGL_ALWAYS_SOFTWARE=1 rviz2
+
+
+Dentro do RViz:
+
+Global Options → Fixed Frame = base_link
+
+Add → LaserScan → /scan
+
+Depois que o SLAM começar a gerar /map:
+
+Mude: Fixed Frame = map
+
+Adicione: Add → Map → /map
+
+💾 Para salvar o mapa (quando estiver bom):
+
+Num novo terminal:
+
+source /opt/ros/humble/setup.bash
+
+ros2 run nav2_map_server map_saver_cli \
+  -f ~/meu_mapa \
+  --ros-args -p map_topic:=/map -p map_subscribe_transient_local:=true
+
+
+O arquivo será salvo como:
+
+~/meu_mapa.pgm
+~/meu_mapa.yaml
