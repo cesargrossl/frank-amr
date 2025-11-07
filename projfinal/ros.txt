@@ -57,3 +57,7 @@ sudo usermod -aG dialout $USER
 Conecte o RPLIDAR; normalmente ele aparece como /dev/ttyUSB0:
 
 ls -l /dev/ttyUSB* /dev/ttyACM* 2>/dev/null
+
+
+***********************
+NOVO
