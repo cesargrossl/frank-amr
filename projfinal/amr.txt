@@ -1,0 +1,35 @@
+sudo nano /etc/systemd/system/lidar.service
+
+
+[Unit]
+Description=Inicia o LIDAR em modo AUTO no boot
+After=multi-user.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/workspace/frank-amr/projfinal
+ExecStart=/home/ubuntu/workspace/frank-amr/projfinal/lidar auto
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+
+
+
+Para ativar
+sudo systemctl daemon-reload
+sudo systemctl enable lidar.service
+sudo systemctl start lidar.service
+
+
+Verificar se esta rodando
+sudo systemctl status lidar.service
+
+
+log
+journalctl -u lidar.service -f
+
+
+parar
+sudo systemctl stop lidar.service
