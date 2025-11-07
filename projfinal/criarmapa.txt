@@ -1,0 +1,20 @@
+ros2 run tf2_ros static_transform_publisher 0 0 0 0 0 0 base_link laser
+
+
+1) Terminal 1 — LIDAR (deixe rodando)
+source /opt/ros/humble/setup.bash
+source ~/ros2_ws/install/setup.bash
+
+ros2 run sllidar_ros2 sllidar_node --ros-args \
+  -p serial_port:=/dev/serial/by-id/usb-Silicon_Labs_CP2102N_USB_to_UART_Bridge_Controller_be73ade4325aee118bfe84dc8ffcc75d-if00-port0 \
+  -p serial_baudrate:=460800 \
+  -p frame_id:=laser \
+  -p angle_compensate:=true \
+  -p scan_mode:=Standard
+
+
+  2) Terminal 2 — SLAM toolbox
+source /opt/ros/humble/setup.bash
+source ~/ros2_ws/install/setup.bash
+
+ros2 launch slam_toolbox online_async_launch.py
