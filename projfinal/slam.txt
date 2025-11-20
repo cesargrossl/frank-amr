@@ -73,10 +73,12 @@ ros2 run nav2_map_server map_saver_cli -t /map -f /home/ubuntu/meu_mapa
 
 Abra um Terminal 4:
 
-ros2 run nav2_map_server map_saver_cli -f ~/meu_mapa
-Abaixo deu certo
-ros2 run nav2_map_server map_saver_cli -t /map -f /home/ubuntu/meu_mapa
 
+Abaixo deu certo
+ros2 run nav2_map_server map_saver_cli -t /map -f /home/ubuntu/mapa_logistica
+
+Verifico se rodou
+ls /home/ubuntu | grep mapa_logistica
 
 Isso cria dois arquivos no seu home:
 
@@ -96,7 +98,7 @@ Depois abra um novo terminal:
 
 ros2 run slam_toolbox async_slam_toolbox_node --ros-args \
   -p mode:=localization \
-  -p map_file_name:=/home/ubuntu/meu_mapa.yaml \
+  -p map_file_name:=/home/ubuntu/mapa_logistica.yaml \
   -p odom_frame:=base_link \
   -p base_frame:=base_link \
   -p map_frame:=map \
@@ -180,3 +182,6 @@ Agora siga isso:
 Se quiser, posso montar um tutorial em PDF, ou um fluxograma visual, ou até deixar tudo pronto em um único launch file para você rodar tudo com um comando.
 
 Como prefere seguir?
+
+
+Agora vamos ver o resultado proximo passo Localização
