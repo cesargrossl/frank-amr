@@ -35,3 +35,15 @@ ros2 run nav2_map_server map_saver_cli -t /map -f /home/ubuntu/meu_mapa
 
 
 Se você quiser, no próximo passo montamos outro launch só para “localização usando mapa pronto” (mode:=localization), apontando para meu_mapa.yaml.
+
+
+
+cd ~/ros2_ws
+colcon build
+source install/setup.bash
+
+
+#para usar
+source /opt/ros/humble/setup.bash
+source ~/ros2_ws/install/setup.bash
+ros2 launch meu_slam slam_mapping.launch.py
