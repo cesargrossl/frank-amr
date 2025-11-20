@@ -60,7 +60,8 @@ ls -l /dev/ttyUSB* /dev/ttyACM* 2>/dev/null
 
 
 ***********************
-1) Confirma os 3 processos
+1) Confirma os 3 processos, 
+06051982AQUI ABRIR PARA CRIAR O MAPA, deu certo atenção veja o item dois com atenção.
 
 Terminal 1 (LIDAR C1): (deixa rodando)
 
@@ -82,6 +83,9 @@ ros2 run slam_toolbox async_slam_toolbox_node --ros-args \
   -p scan_topic:=/scan
 
 2) Mostra no RViz (o que está faltando aí)
+
+source /opt/ros/humble/setup.bash
+LIBGL_ALWAYS_SOFTWARE=1 rviz2
 
 No painel esquerdo: Global Options → Fixed Frame = base_link (ou laser).
 

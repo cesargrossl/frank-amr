@@ -1,0 +1,182 @@
+Terminal 1 (LIDAR C1): (deixa rodando)
+
+ros2 launch sllidar_ros2 sllidar_c1_launch.py \
+  serial_port:=/dev/ttyUSB0 channel_type:=serial serial_baudrate:=460800 frame_id:=laser
+
+
+Terminal 2 (TF estática): (deixa rodando)
+
+ros2 run tf2_ros static_transform_publisher 0 0 0 0 0 0 base_link laser
+
+
+Terminal 3 (SLAM sem odometria): (deixa rodando)
+
+ros2 run slam_toolbox async_slam_toolbox_node --ros-args \
+  -p odom_frame:=base_link \
+  -p base_frame:=base_link \
+  -p map_frame:=map \
+  -p scan_topic:=/scan
+
+2) Mostra no RViz (o que está faltando aí)
+
+source /opt/ros/humble/setup.bash
+LIBGL_ALWAYS_SOFTWARE=1 rviz2
+
+No painel esquerdo: Global Options → Fixed Frame = base_link (ou laser).
+
+Clica Add → By topic → /scan → LaserScan (vai aparecer o círculo/pontos do LIDAR).
+✅ FASE 1 — Ajustar o RViz para visualizar o SLAM
+
+👉 Global Options → Fixed Frame → map
+
+
+No canto inferior esquerdo:
+
+Add → Map
+
+Type: Map
+
+Topic: /map
+
+Isso vai mostrar o mapa que o slam_toolbox está criando.
+
+
+Add → TF
+
+Mostra as setas dos frames (map, base_link, laser).
+
+Ajuda a confirmar se o SLAM está publicando map → base_link.
+✅ FASE 2 — Criar o mapa andando pelo ambiente
+
+Agora você precisa mover o robô pelo ambiente:
+
+Devagar
+
+Fazendo curvas
+
+Dando uma volta completa no local
+
+Passando perto das paredes
+
+Enquanto isso, você vai ver:
+
+✔️ O mapa ficando mais denso
+✔️ Paredes aparecendo
+✔️ O robô se posicionando corretamente no map
+
+Quando estiver satisfeito com o mapa → vamos salvar.
+
+ros2 run nav2_map_server map_saver_cli -t /map -f /home/ubuntu/meu_mapa
+
+
+✅ FASE 3 — Salvar o mapa
+
+Abra um Terminal 4:
+
+ros2 run nav2_map_server map_saver_cli -f ~/meu_mapa
+Abaixo deu certo
+ros2 run nav2_map_server map_saver_cli -t /map -f /home/ubuntu/meu_mapa
+
+
+Isso cria dois arquivos no seu home:
+
+meu_mapa.yaml
+
+meu_mapa.pgm
+
+Esses são o seu mapa definitivo.
+
+🌍 FASE 4 — Usar o mapa salvo (Modo Localização)
+
+Agora você não precisa mais refazer o SLAM.
+Vamos rodar o slam_toolbox apenas para localizar.
+
+Feche o SLAM que estava rodando.
+Depois abra um novo terminal:
+
+ros2 run slam_toolbox async_slam_toolbox_node --ros-args \
+  -p mode:=localization \
+  -p map_file_name:=/home/ubuntu/meu_mapa.yaml \
+  -p odom_frame:=base_link \
+  -p base_frame:=base_link \
+  -p map_frame:=map \
+  -p scan_topic:=/scan
+
+4.1. Abra novamente o RViz
+
+E configure assim:
+
+Fixed Frame = map
+
+Adicione:
+
+Map
+
+LaserScan
+
+TF
+
+Agora, quando você mexer o robô:
+
+✔️ Ele se localiza dentro do mapa
+✔️ O /map fica fixo
+✔️ Apenas a pose (base_link) se mexe
+
+Isso significa que você está pronto para:
+
+Navegação
+
+Nav2
+
+Planejamento de trajetória
+
+🧭 FASE 5 — Próximos passos (se quiser evoluir)
+
+Aqui é onde você pode levar o AMR para o “nível profissional”:
+
+✔️ 1. Adicionar odometria de rodas
+
+Melhora muito o SLAM
+
+Ajuda nos loops (fechamento de mapa)
+
+✔️ 2. Criar um URDF
+
+Para o RViz mostrar o robô em 3D
+
+Para o Nav2 calcular footprint corretamente
+
+✔️ 3. Habilitar o Nav2
+
+Com isso, você vai:
+
+Clicar no mapa → cara ir sozinho até lá
+
+Ter path planning
+
+Ter controle de velocidade automático
+
+Ter desvio de obstáculos
+
+🎯 RESUMO FINAL
+
+Você está nesse ponto:
+
+LIDAR funcionando ✔
+TF funcionando ✔
+SLAM rodando ✔
+RViz com scan ✔
+
+
+Agora siga isso:
+
+[1] No RViz → Fixed Frame = map
+[2] Add → Map (/map)
+[3] Mexer o robô → mapa nasce
+[4] Salvar mapa → map_saver_cli
+[5] Rodar modo localization → usar o mapa sem recriar
+
+
+Se quiser, posso montar um tutorial em PDF, ou um fluxograma visual, ou até deixar tudo pronto em um único launch file para você rodar tudo com um comando.
+
+Como prefere seguir?

@@ -1,0 +1,37 @@
+2.2. Como usar
+
+Coloque esse arquivo em:
+frank_bringup/launch/slam_online.launch.py
+
+Compile o workspace:
+
+cd ~/ros2_ws
+colcon build
+source install/setup.bash
+
+
+Rode tudo com um comando só:
+
+ros2 launch frank_bringup slam_online.launch.py
+
+
+Em outro terminal, abra o RViz (se não estiver no launch):
+
+source /opt/ros/humble/setup.bash
+rviz2
+
+
+Global Options → Fixed Frame = map
+
+Add → Map (topic /map)
+
+Add → LaserScan (topic /scan)
+
+Add → TF
+
+Quando o mapa estiver bom:
+
+ros2 run nav2_map_server map_saver_cli -t /map -f /home/ubuntu/meu_mapa
+
+
+Se você quiser, no próximo passo montamos outro launch só para “localização usando mapa pronto” (mode:=localization), apontando para meu_mapa.yaml.
