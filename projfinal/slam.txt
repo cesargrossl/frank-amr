@@ -22,6 +22,10 @@ ros2 run slam_toolbox async_slam_toolbox_node --ros-args \
 source /opt/ros/humble/setup.bash
 LIBGL_ALWAYS_SOFTWARE=1 rviz2
 
+source /opt/ros/humble/setup.bash
+LIBGL_ALWAYS_SOFTWARE=1 rviz2
+
+
 No painel esquerdo: Global Options → Fixed Frame = base_link (ou laser).
 
 Clica Add → By topic → /scan → LaserScan (vai aparecer o círculo/pontos do LIDAR).
