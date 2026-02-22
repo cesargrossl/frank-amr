@@ -53,5 +53,12 @@ source ~/workspace/frank-amr/ros2_ws/install/setup.bash
 
 ros2 run nav2_map_server map_saver_cli -f ~/meu_mapa
 
+Cria:
+
+~/meu_mapa.yaml
+
+~/meu_mapa.pgm
+
+
 # comnado no power shel window 
 wsl -d Ubuntu-22.04
