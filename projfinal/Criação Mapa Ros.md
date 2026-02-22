@@ -1,4 +1,4 @@
-# Inciar com o comando
+# Inciar com o comando 192.168.1.50
 
 source /opt/ros/humble/setup.bash
 source ~/workspace/frank-amr/ros2_ws/install/setup.bash
