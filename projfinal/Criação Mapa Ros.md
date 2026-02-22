@@ -60,5 +60,8 @@ Cria:
 ~/meu_mapa.pgm
 
 
+# Arquivo Automático 
+./start_mapping.sh
+
 # comnado no power shel window 
 wsl -d Ubuntu-22.04
