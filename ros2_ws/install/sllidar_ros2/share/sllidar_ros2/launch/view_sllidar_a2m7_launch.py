@@ -1,0 +1,1 @@
+/home/ubuntu/workspace/frank-amr/ros2_ws/src/sllidar_ros2/launch/view_sllidar_a2m7_launch.py

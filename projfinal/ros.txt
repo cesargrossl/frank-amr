@@ -163,3 +163,8 @@ O arquivo será salvo como:
 
 ~/meu_mapa.pgm
 ~/meu_mapa.yaml
+
+
+
+
+###################### NOVO TESTE 2026
