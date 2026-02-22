@@ -1,3 +1,5 @@
+# Inciar com o comando
+
 source /opt/ros/humble/setup.bash
 source ~/workspace/frank-amr/ros2_ws/install/setup.bash
 
@@ -44,6 +46,12 @@ source ~/workspace/frank-amr/ros2_ws/install/setup.bash
 
 LIBGL_ALWAYS_SOFTWARE=1 rviz2
 
+# Quando terminar: salvar o mapa
+
+source /opt/ros/humble/setup.bash
+source ~/workspace/frank-amr/ros2_ws/install/setup.bash
+
+ros2 run nav2_map_server map_saver_cli -f ~/meu_mapa
 
 # comnado no power shel window 
 wsl -d Ubuntu-22.04
