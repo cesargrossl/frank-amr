@@ -32,3 +32,13 @@ source ~/workspace/frank-amr/ros2_ws/install/setup.bash
 ros2 launch nav2_bringup localization_launch.py \
   map:=/home/ubuntu/maps/meu_mapa.yaml \
   use_sim_time:=false
+
+
+
+  AQUI PARA RODAR 06051982 
+
+  cd ~/workspace/frank-amr/projfinal
+chmod +x start_robot.sh
+./start_robot.sh
+
+
