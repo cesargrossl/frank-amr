@@ -8,7 +8,7 @@ ODOM_SCRIPT="$HOME/workspace/frank-amr/projfinal/encoder_odometry_node.py"
 LIDAR_PORT="/dev/ttyUSB0"
 
 # TF base_link -> laser (ajuste x y z yaw pitch roll se precisar)
-TF_ARGS="0 0 0 0 0 0 base_link laser"
+TF_ARGS="0 0 0 3.14159 0 0 base_link laser"
 
 # ==============================================
 if [ ! -f "$ROS_SETUP" ]; then
