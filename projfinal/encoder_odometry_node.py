@@ -38,13 +38,8 @@ class EncoderOdom(Node):
         self.declare_parameter('left_gpio', 16)
         self.declare_parameter('right_gpio', 26)
 
-        # Roda 68 mm -> raio 34 mm = 0.034 m
         self.declare_parameter('wheel_radius', 0.034)
-
-        # Medido no seu teste
         self.declare_parameter('ticks_per_rev', 22)
-
-        # Ajuste conforme medida real entre centros das rodas
         self.declare_parameter('wheel_base', 0.15)
 
         self.declare_parameter('frame_odom', 'odom')
@@ -52,14 +47,11 @@ class EncoderOdom(Node):
 
         self.declare_parameter('publish_rate_hz', 30.0)
 
-        # Como seu encoder não informa direção sozinho,
-        # o mais seguro é mapear inicialmente só andando para frente
-        self.declare_parameter('assume_forward_only', True)
+        # Se True, sempre considera frente
+        # Se False, usa os sinais definidos em left_dir_sign/right_dir_sign
+        self.declare_parameter('assume_forward_only', False)
 
-        # Pequeno debounce para evitar ruído
         self.declare_parameter('bounce_time', 0.0015)
-
-        # Intervalo de log
         self.declare_parameter('debug_log_every_sec', 1.0)
         # =================================================
 
@@ -92,6 +84,13 @@ class EncoderOdom(Node):
         self.x = 0.0
         self.y = 0.0
         self.yaw = 0.0
+
+        # Sinal atual das rodas:
+        # +1 = frente
+        # -1 = ré
+        #  0 = parado
+        self.left_dir_sign = 1.0
+        self.right_dir_sign = 1.0
 
         self.enc_l = DigitalInputDevice(
             self.left_gpio,
@@ -136,15 +135,22 @@ class EncoderOdom(Node):
         with self._lock:
             self._ticks_r += 1
 
+    def set_wheel_direction(self, left_sign: float, right_sign: float):
+        """
+        Atualize isso a partir do seu nó/controlador de motor.
+        left_sign/right_sign:
+          +1.0 = frente
+          -1.0 = ré
+           0.0 = parado
+        """
+        self.left_dir_sign = float(left_sign)
+        self.right_dir_sign = float(right_sign)
+
     def _get_wheel_signs(self):
-        sign_l = 1.0
-        sign_r = 1.0
+        if self.assume_forward_only:
+            return 1.0, 1.0
 
-        if not self.assume_forward_only:
-            # Futuramente você pode integrar o sinal dos motores aqui
-            pass
-
-        return sign_l, sign_r
+        return self.left_dir_sign, self.right_dir_sign
 
     def _update(self):
         now = time()
@@ -165,14 +171,11 @@ class EncoderOdom(Node):
         self.last_time = now
 
         sign_l, sign_r = self._get_wheel_signs()
-        d_ticks_l *= sign_l
-        d_ticks_r *= sign_r
 
-        # distância linear percorrida por 1 pulso
         meters_per_tick = (2.0 * math.pi * self.wheel_radius) / self.ticks_per_rev
 
-        dl = d_ticks_l * meters_per_tick
-        dr = d_ticks_r * meters_per_tick
+        dl = sign_l * d_ticks_l * meters_per_tick
+        dr = sign_r * d_ticks_r * meters_per_tick
 
         ds = (dr + dl) / 2.0
         d_yaw = (dr - dl) / self.wheel_base
@@ -201,13 +204,20 @@ class EncoderOdom(Node):
         odom.twist.twist.linear.y = 0.0
         odom.twist.twist.angular.z = float(vth)
 
-        odom.pose.covariance[0] = 0.02
-        odom.pose.covariance[7] = 0.02
-        odom.pose.covariance[35] = 0.05
+        # Covariâncias mais conservadoras
+        odom.pose.covariance[0] = 0.1
+        odom.pose.covariance[7] = 0.1
+        odom.pose.covariance[14] = 99999.0
+        odom.pose.covariance[21] = 99999.0
+        odom.pose.covariance[28] = 99999.0
+        odom.pose.covariance[35] = 0.3
 
-        odom.twist.covariance[0] = 0.02
-        odom.twist.covariance[7] = 0.02
-        odom.twist.covariance[35] = 0.05
+        odom.twist.covariance[0] = 0.1
+        odom.twist.covariance[7] = 0.1
+        odom.twist.covariance[14] = 99999.0
+        odom.twist.covariance[21] = 99999.0
+        odom.twist.covariance[28] = 99999.0
+        odom.twist.covariance[35] = 0.3
 
         self.odom_pub.publish(odom)
 
@@ -227,6 +237,7 @@ class EncoderOdom(Node):
             self.get_logger().info(
                 f'ticks L/R=({ticks_l},{ticks_r}) | '
                 f'delta L/R=({int(d_ticks_l)},{int(d_ticks_r)}) | '
+                f'sign L/R=({sign_l:.0f},{sign_r:.0f}) | '
                 f'm_per_tick={meters_per_tick:.5f} | '
                 f'dl={dl:.4f} m dr={dr:.4f} m | '
                 f'x={self.x:.3f} y={self.y:.3f} yaw={self.yaw:.3f}'
