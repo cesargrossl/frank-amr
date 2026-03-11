@@ -42,3 +42,16 @@ chmod +x start_robot.sh
 ./start_robot.sh
 
 
+Teste andar para frente
+
+A) Frente (deveria andar reto)
+source /opt/ros/humble/setup.bash
+ros2 topic pub --once /cmd_vel geometry_msgs/Twist "{linear: {x: 0.10}, angular: {z: 0.0}}"
+sleep 2
+ros2 topic pub --once /cmd_vel geometry_msgs/Twist "{linear: {x: 0.0}, angular: {z: 0.0}}"
+B) Giro (deveria girar parado)
+ros2 topic pub --once /cmd_vel geometry_msgs/Twist "{linear: {x: 0.0}, angular: {z: 0.8}}"
+sleep 1
+ros2 topic pub --once /cmd_vel geometry_msgs/Twist "{linear: {x: 0.0}, angular: {z: 0.0}}"
+
+
