@@ -15,9 +15,6 @@ class KeyboardMotorController(Node):
     def __init__(self):
         super().__init__('keyboard_motor_controller')
 
-        # =============================
-        # PINOS DOS MOTORES
-        # =============================
         self.IN1 = 17
         self.IN2 = 27
         self.IN3 = 22
@@ -53,17 +50,19 @@ class KeyboardMotorController(Node):
         self.publish_wheel_dir(0, 0)
 
     def frente(self):
-        GPIO.output(self.IN1, 1)
-        GPIO.output(self.IN2, 0)
-        GPIO.output(self.IN3, 1)
-        GPIO.output(self.IN4, 0)
-        self.publish_wheel_dir(+1, +1)
-
-    def re(self):
+        # invertido fisicamente, então frente real ficou assim
         GPIO.output(self.IN1, 0)
         GPIO.output(self.IN2, 1)
         GPIO.output(self.IN3, 0)
         GPIO.output(self.IN4, 1)
+        self.publish_wheel_dir(+1, +1)
+
+    def re(self):
+        # invertido fisicamente, então ré real ficou assim
+        GPIO.output(self.IN1, 1)
+        GPIO.output(self.IN2, 0)
+        GPIO.output(self.IN3, 1)
+        GPIO.output(self.IN4, 0)
         self.publish_wheel_dir(-1, -1)
 
     def esquerda(self):
