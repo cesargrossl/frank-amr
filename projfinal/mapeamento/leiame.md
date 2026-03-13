@@ -5,6 +5,12 @@ No terminal:
 chmod +x start_slam.sh
 ./start_slam.sh
 
+Depois que abrir rodar
+
+source /opt/ros/humble/setup.bash
+source ~/workspace/frank-amr/ros2_ws/install/setup.bash
+
+python3 ~/workspace/frank-amr/projfinal/mapeamento/controlar_carrinho.py
 
 2) No RViz: o que configurar para ver o mapa nascer
 
