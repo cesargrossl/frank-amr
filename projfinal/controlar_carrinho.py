@@ -56,7 +56,7 @@ def direita():
 # =============================
 # LEITURA NÃO BLOQUEANTE
 # =============================
-def get_key(timeout=0.02):
+def get_key(timeout=0.04):
     dr, _, _ = select.select([sys.stdin], [], [], timeout)
     if dr:
         return sys.stdin.read(1)
