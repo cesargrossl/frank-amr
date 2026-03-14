@@ -2,8 +2,8 @@
 
 No terminal:
 
-chmod +x start_slam.sh
-./start_slam.sh
+chmod +x start_mapping.sh
+./start_mapping.sh
 
 ### 2) CONTROLAR A DIREÇAÕ IMPORTANTE Depois que abrir rodar
 
@@ -29,6 +29,6 @@ Andar com o carrinho e salvar o mapa com o comando abaixo
 
 
 mkdir -p ~/maps
-ros2 run nav2_map_server map_saver_cli -f ~/maps/mapa_cros2 --ros-args \
+ros2 run nav2_map_server map_saver_cli -f ~/maps/mapa_cros3 --ros-args \
   -p map_subscribe_transient_local:=true \
   -p save_map_timeout:=10.0

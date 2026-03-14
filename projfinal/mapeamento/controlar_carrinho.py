@@ -15,17 +15,22 @@ class KeyboardMotorController(Node):
     def __init__(self):
         super().__init__('keyboard_motor_controller')
 
-        self.IN1 = 17
-        self.IN2 = 27
-        self.IN3 = 22
-        self.IN4 = 23
+        # =====================================
+        # LADO ESQUERDO = 2 motores juntos
+        # LADO DIREITO  = 2 motores juntos
+        # =====================================
+        self.LEFT_IN1 = 17
+        self.LEFT_IN2 = 27
+        self.RIGHT_IN1 = 22
+        self.RIGHT_IN2 = 23
 
         GPIO.setmode(GPIO.BCM)
         GPIO.setwarnings(False)
-        GPIO.setup(self.IN1, GPIO.OUT)
-        GPIO.setup(self.IN2, GPIO.OUT)
-        GPIO.setup(self.IN3, GPIO.OUT)
-        GPIO.setup(self.IN4, GPIO.OUT)
+
+        GPIO.setup(self.LEFT_IN1, GPIO.OUT)
+        GPIO.setup(self.LEFT_IN2, GPIO.OUT)
+        GPIO.setup(self.RIGHT_IN1, GPIO.OUT)
+        GPIO.setup(self.RIGHT_IN2, GPIO.OUT)
 
         self.pub_dir = self.create_publisher(Int8MultiArray, '/wheel_dir', 10)
 
@@ -34,7 +39,7 @@ class KeyboardMotorController(Node):
         self.last_key_time = 0.0
 
         self.get_logger().info('Controle do robô iniciado')
-        self.get_logger().info('Segure W/A/S/D para mover')
+        self.get_logger().info('W = frente | S = ré | A = esquerda | D = direita')
         self.get_logger().info('Espaço = parar | Q = sair')
 
     def publish_wheel_dir(self, left_sign: int, right_sign: int):
@@ -42,41 +47,57 @@ class KeyboardMotorController(Node):
         msg.data = [int(left_sign), int(right_sign)]
         self.pub_dir.publish(msg)
 
+    def lado_esquerdo_frente(self):
+        GPIO.output(self.LEFT_IN1, 0)
+        GPIO.output(self.LEFT_IN2, 1)
+
+    def lado_esquerdo_re(self):
+        GPIO.output(self.LEFT_IN1, 1)
+        GPIO.output(self.LEFT_IN2, 0)
+
+    def lado_direito_frente(self):
+        GPIO.output(self.RIGHT_IN1, 0)
+        GPIO.output(self.RIGHT_IN2, 1)
+
+    def lado_direito_re(self):
+        GPIO.output(self.RIGHT_IN1, 1)
+        GPIO.output(self.RIGHT_IN2, 0)
+
+    def parar_lado_esquerdo(self):
+        GPIO.output(self.LEFT_IN1, 0)
+        GPIO.output(self.LEFT_IN2, 0)
+
+    def parar_lado_direito(self):
+        GPIO.output(self.RIGHT_IN1, 0)
+        GPIO.output(self.RIGHT_IN2, 0)
+
     def parar(self):
-        GPIO.output(self.IN1, 0)
-        GPIO.output(self.IN2, 0)
-        GPIO.output(self.IN3, 0)
-        GPIO.output(self.IN4, 0)
+        self.parar_lado_esquerdo()
+        self.parar_lado_direito()
         self.publish_wheel_dir(0, 0)
 
     def frente(self):
-        # invertido fisicamente, então frente real ficou assim
-        GPIO.output(self.IN1, 0)
-        GPIO.output(self.IN2, 1)
-        GPIO.output(self.IN3, 0)
-        GPIO.output(self.IN4, 1)
+        # 2 motores esquerdos + 2 motores direitos para frente
+        self.lado_esquerdo_frente()
+        self.lado_direito_frente()
         self.publish_wheel_dir(+1, +1)
 
     def re(self):
-        # invertido fisicamente, então ré real ficou assim
-        GPIO.output(self.IN1, 1)
-        GPIO.output(self.IN2, 0)
-        GPIO.output(self.IN3, 1)
-        GPIO.output(self.IN4, 0)
+        # 2 motores esquerdos + 2 motores direitos para trás
+        self.lado_esquerdo_re()
+        self.lado_direito_re()
         self.publish_wheel_dir(-1, -1)
 
     def esquerda(self):
-        GPIO.output(self.IN1, 0)
-        GPIO.output(self.IN2, 1)
-        GPIO.output(self.IN3, 1)
-        GPIO.output(self.IN4, 0)
+        # gira no eixo
+        self.lado_esquerdo_re()
+        self.lado_direito_frente()
         self.publish_wheel_dir(-1, +1)
 
     def direita(self):
-        GPIO.output(self.IN1, 1)
-        GPIO.output(self.IN2, 0)
-        GPIO.output(self.IN3, 0)
-        GPIO.output(self.IN4, 1)
+        # gira no eixo
+        self.lado_esquerdo_frente()
+        self.lado_direito_re()
         self.publish_wheel_dir(+1, -1)
 
     @staticmethod
@@ -132,7 +153,7 @@ class KeyboardMotorController(Node):
                     self.last_cmd = None
 
                 rclpy.spin_once(self, timeout_sec=0.0)
-                time.sleep(0.01)
+                time.sleep(0.05)
 
         finally:
             termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
