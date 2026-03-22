@@ -5,12 +5,9 @@ from time import time
 
 import rclpy
 from rclpy.node import Node
-
 from nav_msgs.msg import Odometry
-from geometry_msgs.msg import TransformStamped, Quaternion
-from tf2_ros import TransformBroadcaster
+from geometry_msgs.msg import Quaternion
 from std_msgs.msg import Int8MultiArray
-
 from gpiozero import DigitalInputDevice
 
 
@@ -35,38 +32,37 @@ class EncoderOdom(Node):
     def __init__(self):
         super().__init__('encoder_odometry')
 
-        # ================== PARÂMETROS ==================
         self.declare_parameter('left_gpio', 16)
         self.declare_parameter('right_gpio', 26)
-
         self.declare_parameter('wheel_radius', 0.034)
         self.declare_parameter('ticks_per_rev', 22)
         self.declare_parameter('wheel_base', 0.15)
-
         self.declare_parameter('frame_odom', 'odom')
         self.declare_parameter('frame_base', 'base_link')
-
         self.declare_parameter('publish_rate_hz', 30.0)
         self.declare_parameter('assume_forward_only', False)
-
         self.declare_parameter('bounce_time', 0.0015)
         self.declare_parameter('debug_log_every_sec', 1.0)
-        # =================================================
+        self.declare_parameter('odom_topic', '/odom_wheel')
+        self.declare_parameter('min_dt', 1e-4)
+        self.declare_parameter('rotation_slip_penalty', 2.5)
+        self.declare_parameter('zero_motion_reset_dir', True)
 
         self.left_gpio = int(self.get_parameter('left_gpio').value)
         self.right_gpio = int(self.get_parameter('right_gpio').value)
-
         self.ticks_per_rev = float(self.get_parameter('ticks_per_rev').value)
         self.wheel_radius = float(self.get_parameter('wheel_radius').value)
         self.wheel_base = float(self.get_parameter('wheel_base').value)
-
         self.frame_odom = str(self.get_parameter('frame_odom').value)
         self.frame_base = str(self.get_parameter('frame_base').value)
-
         self.rate_hz = float(self.get_parameter('publish_rate_hz').value)
         self.assume_forward_only = bool(self.get_parameter('assume_forward_only').value)
         self.bounce_time = float(self.get_parameter('bounce_time').value)
         self.debug_log_every_sec = float(self.get_parameter('debug_log_every_sec').value)
+        self.odom_topic = str(self.get_parameter('odom_topic').value)
+        self.min_dt = float(self.get_parameter('min_dt').value)
+        self.rotation_slip_penalty = float(self.get_parameter('rotation_slip_penalty').value)
+        self.zero_motion_reset_dir = bool(self.get_parameter('zero_motion_reset_dir').value)
 
         if self.ticks_per_rev <= 0:
             raise ValueError('ticks_per_rev deve ser > 0')
@@ -74,6 +70,8 @@ class EncoderOdom(Node):
             raise ValueError('wheel_radius deve ser > 0')
         if self.wheel_base <= 0:
             raise ValueError('wheel_base deve ser > 0')
+        if self.rate_hz <= 0:
+            raise ValueError('publish_rate_hz deve ser > 0')
 
         self._lock = threading.Lock()
         self._ticks_l = 0
@@ -83,7 +81,6 @@ class EncoderOdom(Node):
         self.y = 0.0
         self.yaw = 0.0
 
-        # +1 = frente, -1 = ré, 0 = parado
         self.left_dir_sign = 0.0
         self.right_dir_sign = 0.0
 
@@ -97,19 +94,16 @@ class EncoderOdom(Node):
             pull_up=True,
             bounce_time=self.bounce_time
         )
-
         self.enc_l.when_activated = self._pulse_left
         self.enc_r.when_activated = self._pulse_right
 
-        self.odom_pub = self.create_publisher(Odometry, '/odom', 10)
-        self.tf_broadcaster = TransformBroadcaster(self)
+        self.odom_pub = self.create_publisher(Odometry, self.odom_topic, 10)
 
-        # Assina o tópico de direção das rodas
         self.dir_sub = self.create_subscription(
             Int8MultiArray,
             '/wheel_dir',
             self._wheel_dir_callback,
-            10
+            10,
         )
 
         self.last_time = time()
@@ -117,7 +111,7 @@ class EncoderOdom(Node):
         self.last_ticks_r = 0
         self.last_debug_time = time()
 
-        period = 1.0 / max(1.0, self.rate_hz)
+        period = 1.0 / self.rate_hz
         self.timer = self.create_timer(period, self._update)
 
         self.get_logger().info(
@@ -126,8 +120,9 @@ class EncoderOdom(Node):
             f'ticks_per_rev={self.ticks_per_rev} | '
             f'wheel_radius={self.wheel_radius:.4f} m | '
             f'wheel_base={self.wheel_base:.4f} m | '
+            f'odom_topic={self.odom_topic} | '
             f'bounce_time={self.bounce_time:.4f} s | '
-            f'assume_forward_only={self.assume_forward_only}'
+            f'rotation_slip_penalty={self.rotation_slip_penalty:.2f}'
         )
 
     def _pulse_left(self):
@@ -146,9 +141,13 @@ class EncoderOdom(Node):
         left = float(msg.data[0])
         right = float(msg.data[1])
 
-        # Garante apenas -1, 0 ou +1
         self.left_dir_sign = -1.0 if left < 0 else (1.0 if left > 0 else 0.0)
         self.right_dir_sign = -1.0 if right < 0 else (1.0 if right > 0 else 0.0)
+
+        if self.zero_motion_reset_dir and self.left_dir_sign == 0.0 and self.right_dir_sign == 0.0:
+            # Mantém consistência quando o robô para.
+            self.left_dir_sign = 0.0
+            self.right_dir_sign = 0.0
 
     def _get_wheel_signs(self):
         if self.assume_forward_only:
@@ -158,8 +157,7 @@ class EncoderOdom(Node):
     def _update(self):
         now = time()
         dt = now - self.last_time
-
-        if dt <= 0.0 or dt < 1e-4:
+        if dt <= 0.0 or dt < self.min_dt:
             return
 
         with self._lock:
@@ -174,7 +172,6 @@ class EncoderOdom(Node):
         self.last_time = now
 
         sign_l, sign_r = self._get_wheel_signs()
-
         meters_per_tick = (2.0 * math.pi * self.wheel_radius) / self.ticks_per_rev
 
         dl = sign_l * d_ticks_l * meters_per_tick
@@ -182,6 +179,18 @@ class EncoderOdom(Node):
 
         ds = (dr + dl) / 2.0
         d_yaw = (dr - dl) / self.wheel_base
+
+        rotating_in_place = (sign_l * sign_r) < 0.0 or (sign_l == 0.0 and sign_r != 0.0) or (sign_r == 0.0 and sign_l != 0.0)
+        yaw_cov = 0.35
+        twist_yaw_cov = 0.35
+        pose_x_cov = 0.08
+        pose_y_cov = 0.08
+
+        if rotating_in_place:
+            yaw_cov *= self.rotation_slip_penalty
+            twist_yaw_cov *= self.rotation_slip_penalty
+            pose_x_cov *= 1.5
+            pose_y_cov *= 1.5
 
         yaw_mid = self.yaw + (d_yaw / 2.0)
         self.x += ds * math.cos(yaw_mid)
@@ -192,7 +201,6 @@ class EncoderOdom(Node):
         vth = d_yaw / dt
 
         stamp = self.get_clock().now().to_msg()
-
         odom = Odometry()
         odom.header.stamp = stamp
         odom.header.frame_id = self.frame_odom
@@ -207,32 +215,24 @@ class EncoderOdom(Node):
         odom.twist.twist.linear.y = 0.0
         odom.twist.twist.angular.z = float(vth)
 
-        odom.pose.covariance[0] = 0.1
-        odom.pose.covariance[7] = 0.1
+        odom.pose.covariance = [0.0] * 36
+        odom.twist.covariance = [0.0] * 36
+
+        odom.pose.covariance[0] = pose_x_cov
+        odom.pose.covariance[7] = pose_y_cov
         odom.pose.covariance[14] = 99999.0
         odom.pose.covariance[21] = 99999.0
         odom.pose.covariance[28] = 99999.0
-        odom.pose.covariance[35] = 0.3
+        odom.pose.covariance[35] = yaw_cov
 
-        odom.twist.covariance[0] = 0.1
-        odom.twist.covariance[7] = 0.1
+        odom.twist.covariance[0] = 0.10
+        odom.twist.covariance[7] = 0.20
         odom.twist.covariance[14] = 99999.0
         odom.twist.covariance[21] = 99999.0
         odom.twist.covariance[28] = 99999.0
-        odom.twist.covariance[35] = 0.3
+        odom.twist.covariance[35] = twist_yaw_cov
 
         self.odom_pub.publish(odom)
-
-        t = TransformStamped()
-        t.header.stamp = stamp
-        t.header.frame_id = self.frame_odom
-        t.child_frame_id = self.frame_base
-        t.transform.translation.x = float(self.x)
-        t.transform.translation.y = float(self.y)
-        t.transform.translation.z = 0.0
-        t.transform.rotation = yaw_to_quat(self.yaw)
-
-        self.tf_broadcaster.sendTransform(t)
 
         if (now - self.last_debug_time) >= self.debug_log_every_sec:
             self.last_debug_time = now
@@ -241,7 +241,8 @@ class EncoderOdom(Node):
                 f'delta L/R=({int(d_ticks_l)},{int(d_ticks_r)}) | '
                 f'sign L/R=({sign_l:.0f},{sign_r:.0f}) | '
                 f'dl={dl:.4f} m dr={dr:.4f} m | '
-                f'x={self.x:.3f} y={self.y:.3f} yaw={self.yaw:.3f}'
+                f'x={self.x:.3f} y={self.y:.3f} yaw={self.yaw:.3f} | '
+                f'rotating_in_place={rotating_in_place}'
             )
 
 

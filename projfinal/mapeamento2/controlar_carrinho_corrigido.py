@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
+import select
 import sys
 import termios
-import tty
-import select
 import time
+import tty
 
 import RPi.GPIO as GPIO
 import rclpy
@@ -15,10 +15,7 @@ class KeyboardMotorController(Node):
     def __init__(self):
         super().__init__('keyboard_motor_controller')
 
-        # =====================================
-        # LADO ESQUERDO = 2 motores juntos
-        # LADO DIREITO  = 2 motores juntos
-        # =====================================
+        # Ponte H / GPIOs
         self.LEFT_IN1 = 17
         self.LEFT_IN2 = 27
         self.RIGHT_IN1 = 22
@@ -26,7 +23,6 @@ class KeyboardMotorController(Node):
 
         GPIO.setmode(GPIO.BCM)
         GPIO.setwarnings(False)
-
         GPIO.setup(self.LEFT_IN1, GPIO.OUT)
         GPIO.setup(self.LEFT_IN2, GPIO.OUT)
         GPIO.setup(self.RIGHT_IN1, GPIO.OUT)
@@ -38,8 +34,14 @@ class KeyboardMotorController(Node):
         self.last_cmd = None
         self.last_key_time = 0.0
 
+        # Mantido apenas como metadado para a odometria.
+        # Sem PWM real, usamos apenas o "modo" de curva.
+        self.turn_mode = 'pivot'  # pivot = um lado anda / outro para
+        self.allow_spin_in_place = False
+
         self.get_logger().info('Controle do robô iniciado')
-        self.get_logger().info('W = frente | S = ré | A = esquerda | D = direita')
+        self.get_logger().info('W = frente | S = ré | A = esquerda suave | D = direita suave')
+        self.get_logger().info('Z = gira no eixo à esquerda | C = gira no eixo à direita')
         self.get_logger().info('Espaço = parar | Q = sair')
 
     def publish_wheel_dir(self, left_sign: int, right_sign: int):
@@ -48,28 +50,28 @@ class KeyboardMotorController(Node):
         self.pub_dir.publish(msg)
 
     def lado_esquerdo_frente(self):
-        GPIO.output(self.LEFT_IN1, 0)
-        GPIO.output(self.LEFT_IN2, 1)
+        GPIO.output(self.LEFT_IN1, GPIO.LOW)
+        GPIO.output(self.LEFT_IN2, GPIO.HIGH)
 
     def lado_esquerdo_re(self):
-        GPIO.output(self.LEFT_IN1, 1)
-        GPIO.output(self.LEFT_IN2, 0)
+        GPIO.output(self.LEFT_IN1, GPIO.HIGH)
+        GPIO.output(self.LEFT_IN2, GPIO.LOW)
 
     def lado_direito_frente(self):
-        GPIO.output(self.RIGHT_IN1, 0)
-        GPIO.output(self.RIGHT_IN2, 1)
+        GPIO.output(self.RIGHT_IN1, GPIO.LOW)
+        GPIO.output(self.RIGHT_IN2, GPIO.HIGH)
 
     def lado_direito_re(self):
-        GPIO.output(self.RIGHT_IN1, 1)
-        GPIO.output(self.RIGHT_IN2, 0)
+        GPIO.output(self.RIGHT_IN1, GPIO.HIGH)
+        GPIO.output(self.RIGHT_IN2, GPIO.LOW)
 
     def parar_lado_esquerdo(self):
-        GPIO.output(self.LEFT_IN1, 0)
-        GPIO.output(self.LEFT_IN2, 0)
+        GPIO.output(self.LEFT_IN1, GPIO.LOW)
+        GPIO.output(self.LEFT_IN2, GPIO.LOW)
 
     def parar_lado_direito(self):
-        GPIO.output(self.RIGHT_IN1, 0)
-        GPIO.output(self.RIGHT_IN2, 0)
+        GPIO.output(self.RIGHT_IN1, GPIO.LOW)
+        GPIO.output(self.RIGHT_IN2, GPIO.LOW)
 
     def parar(self):
         self.parar_lado_esquerdo()
@@ -77,25 +79,51 @@ class KeyboardMotorController(Node):
         self.publish_wheel_dir(0, 0)
 
     def frente(self):
-        # 2 motores esquerdos + 2 motores direitos para frente
         self.lado_esquerdo_frente()
         self.lado_direito_frente()
         self.publish_wheel_dir(+1, +1)
 
     def re(self):
-        # 2 motores esquerdos + 2 motores direitos para trás
         self.lado_esquerdo_re()
         self.lado_direito_re()
         self.publish_wheel_dir(-1, -1)
 
     def esquerda(self):
-        # gira no eixo
+        # Curva suave para reduzir patinagem:
+        # lado esquerdo para, lado direito anda.
+        self.parar_lado_esquerdo()
+        self.lado_direito_frente()
+        self.publish_wheel_dir(0, +1)
+
+    def direita(self):
+        # Curva suave para reduzir patinagem:
+        # lado direito para, lado esquerdo anda.
+        self.lado_esquerdo_frente()
+        self.parar_lado_direito()
+        self.publish_wheel_dir(+1, 0)
+
+    def giro_eixo_esquerda(self):
+        if not self.allow_spin_in_place:
+            self.get_logger().warn(
+                'Giro no eixo desabilitado por padrão para reduzir derrapagem. '
+                'Usando curva suave para a esquerda.'
+            )
+            self.esquerda()
+            return
+
         self.lado_esquerdo_re()
         self.lado_direito_frente()
         self.publish_wheel_dir(-1, +1)
 
-    def direita(self):
-        # gira no eixo
+    def giro_eixo_direita(self):
+        if not self.allow_spin_in_place:
+            self.get_logger().warn(
+                'Giro no eixo desabilitado por padrão para reduzir derrapagem. '
+                'Usando curva suave para a direita.'
+            )
+            self.direita()
+            return
+
         self.lado_esquerdo_frente()
         self.lado_direito_re()
         self.publish_wheel_dir(+1, -1)
@@ -139,6 +167,16 @@ class KeyboardMotorController(Node):
                     elif key == 'd':
                         self.direita()
                         self.last_cmd = 'd'
+                        self.last_key_time = now
+
+                    elif key == 'z':
+                        self.giro_eixo_esquerda()
+                        self.last_cmd = 'z'
+                        self.last_key_time = now
+
+                    elif key == 'c':
+                        self.giro_eixo_direita()
+                        self.last_cmd = 'c'
                         self.last_key_time = now
 
                     elif key == ' ':
