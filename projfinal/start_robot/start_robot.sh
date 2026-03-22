@@ -6,7 +6,7 @@ WS_SETUP="$HOME/workspace/frank-amr/ros2_ws/install/setup.bash"
 
 ODOM_SCRIPT="$HOME/workspace/frank-amr/projfinal/mapeamento/encoder_odometry_node.py"
 MOTOR_SCRIPT="$HOME/workspace/frank-amr/projfinal/tb6612_cmdvel_node.py"
-MAP_YAML="$HOME/maps/mapa_cros2.yaml"
+MAP_YAML="$HOME/maps/mapa_cros4.yaml"
 NAV2_PARAMS="$HOME/workspace/frank-amr/projfinal/start_robot/nav2_params.yaml"
 
 LIDAR_PORT="/dev/ttyUSB0"
