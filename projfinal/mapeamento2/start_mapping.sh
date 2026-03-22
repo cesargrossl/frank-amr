@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-set -euo pipefail
+set -eo pipefail
 
 # ===== Ajuste esses caminhos se necessário =====
 WS_SETUP="$HOME/workspace/frank-amr/ros2_ws/install/setup.bash"
 ROS_SETUP="/opt/ros/humble/setup.bash"
 
-BASE_DIR="$HOME/workspace/frank-amr/projfinal/mapeamento"
+BASE_DIR="$HOME/workspace/frank-amr/projfinal/mapeamento2"
 ODOM_SCRIPT="$BASE_DIR/encoder_odometry_node_corrigido.py"
 CTRL_SCRIPT="$BASE_DIR/controlar_carrinho_corrigido.py"
 EKF_YAML="$BASE_DIR/ekf_lidar_wheel.yaml"
