@@ -1,13 +1,23 @@
 from gpiozero import Button
 from time import sleep
 
-fim_curso = Button(21, pull_up=True)
+fim_superior = Button(21, pull_up=True)
+fim_inferior = Button(20, pull_up=True)
 
-print("Teste fim de curso no GPIO 20")
+print("Teste dos fins de curso")
 
 while True:
-    if fim_curso.is_pressed:
-        print("LIVRE")
+
+    if fim_superior.is_pressed:
+        print("Fim superior: LIVRE")
     else:
-        print("PRESSIONADO")
+        print("Fim superior: ACIONADO")
+
+    if fim_inferior.is_pressed:
+        print("Fim inferior: LIVRE")
+    else:
+        print("Fim inferior: ACIONADO")
+
+    print("-------------------")
+
     sleep(0.2)
