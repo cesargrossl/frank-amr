@@ -2,17 +2,14 @@
 import RPi.GPIO as GPIO
 import sys, termios, tty, select, time
 
-# Motores do carrinho
 IN1 = 17
 IN2 = 27
 IN3 = 22
 IN4 = 23
 
-# Motor do garfo - AJUSTE se usar outros GPIOs
 GARFO_IN1 = 5
 GARFO_IN2 = 6
 
-# Fins de curso
 FIM_SUPERIOR = 21
 FIM_INFERIOR = 20
 
@@ -21,8 +18,8 @@ GPIO.setmode(GPIO.BCM)
 for pino in [IN1, IN2, IN3, IN4, GARFO_IN1, GARFO_IN2]:
     GPIO.setup(pino, GPIO.OUT)
 
-GPIO.setup(FIM_SUPERIOR, GPIO.IN, pull_up_down=GPIO.PUD_UP)
-GPIO.setup(FIM_INFERIOR, GPIO.IN, pull_up_down=GPIO.PUD_UP)
+GPIO.setup(FIM_SUPERIOR, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
+GPIO.setup(FIM_INFERIOR, GPIO.IN, pull_up_down=GPIO.PUD_DOWN)
 
 def fim_superior_acionado():
     return GPIO.input(FIM_SUPERIOR) == GPIO.HIGH
@@ -30,7 +27,7 @@ def fim_superior_acionado():
 def fim_inferior_acionado():
     return GPIO.input(FIM_INFERIOR) == GPIO.HIGH
 
-def parar():
+def parar_carrinho():
     GPIO.output(IN1, 0)
     GPIO.output(IN2, 0)
     GPIO.output(IN3, 0)
@@ -66,19 +63,23 @@ def parar_garfo():
 
 def subir_garfo():
     if fim_superior_acionado():
-        print("Fim superior acionado. Garfo parado.")
+        print("Bloqueado: fim superior acionado.")
         parar_garfo()
-    else:
-        GPIO.output(GARFO_IN1, 1)
-        GPIO.output(GARFO_IN2, 0)
+        return False
+
+    GPIO.output(GARFO_IN1, 1)
+    GPIO.output(GARFO_IN2, 0)
+    return True
 
 def descer_garfo():
     if fim_inferior_acionado():
-        print("Fim inferior acionado. Garfo parado.")
+        print("Bloqueado: fim inferior acionado.")
         parar_garfo()
-    else:
-        GPIO.output(GARFO_IN1, 0)
-        GPIO.output(GARFO_IN2, 1)
+        return False
+
+    GPIO.output(GARFO_IN1, 0)
+    GPIO.output(GARFO_IN2, 1)
+    return True
 
 def get_key(timeout=0.04):
     dr, _, _ = select.select([sys.stdin], [], [], timeout)
@@ -91,10 +92,11 @@ def main():
     old_settings = termios.tcgetattr(fd)
 
     STOP_TIMEOUT = 0.18
+
     last_mov = None
     last_garfo = None
-    last_mov_time = 0
-    last_garfo_time = 0
+    last_mov_time = 0.0
+    last_garfo_time = 0.0
 
     print("Controle do robô")
     print("W/A/S/D = carrinho")
@@ -110,7 +112,7 @@ def main():
             key = get_key()
             now = time.monotonic()
 
-            if key:
+            if key is not None:
                 key = key.lower()
 
                 if key == 'w':
@@ -134,17 +136,21 @@ def main():
                     last_mov_time = now
 
                 elif key == 'p':
-                    subir_garfo()
-                    last_garfo = 'p'
-                    last_garfo_time = now
+                    if subir_garfo():
+                        last_garfo = 'p'
+                        last_garfo_time = now
+                    else:
+                        last_garfo = None
 
                 elif key == 'l':
-                    descer_garfo()
-                    last_garfo = 'l'
-                    last_garfo_time = now
+                    if descer_garfo():
+                        last_garfo = 'l'
+                        last_garfo_time = now
+                    else:
+                        last_garfo = None
 
                 elif key == ' ':
-                    parar()
+                    parar_carrinho()
                     parar_garfo()
                     last_mov = None
                     last_garfo = None
@@ -152,32 +158,29 @@ def main():
                 elif key == 'q':
                     break
 
-            # Para carrinho se soltar tecla
-            if last_mov and (now - last_mov_time) > STOP_TIMEOUT:
-                parar()
+            if last_mov is not None and (now - last_mov_time) > STOP_TIMEOUT:
+                parar_carrinho()
                 last_mov = None
 
-            # Para garfo se soltar tecla
-            if last_garfo and (now - last_garfo_time) > STOP_TIMEOUT:
+            if last_garfo is not None and (now - last_garfo_time) > STOP_TIMEOUT:
                 parar_garfo()
                 last_garfo = None
 
-            # Segurança: para garfo ao bater no fim de curso
             if last_garfo == 'p' and fim_superior_acionado():
                 parar_garfo()
                 last_garfo = None
-                print("Garfo chegou no fim superior.")
+                print("Parado: fim superior acionado.")
 
             if last_garfo == 'l' and fim_inferior_acionado():
                 parar_garfo()
                 last_garfo = None
-                print("Garfo chegou no fim inferior.")
+                print("Parado: fim inferior acionado.")
 
             time.sleep(0.01)
 
     finally:
         termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-        parar()
+        parar_carrinho()
         parar_garfo()
         GPIO.cleanup()
 
