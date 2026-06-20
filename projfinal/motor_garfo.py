@@ -1,23 +1,21 @@
 from gpiozero import OutputDevice, Button
 from time import sleep
 
-# Motor - ajuste conforme sua ligação
 IN1 = OutputDevice(5)
 IN2 = OutputDevice(6)
 
-# Fins de curso
 fim_superior = Button(21, pull_up=True)
 fim_inferior = Button(20, pull_up=True)
 
 def subir():
     print("Subindo")
-    IN1.on()
-    IN2.off()
+    IN1.off()
+    IN2.on()
 
 def descer():
     print("Descendo")
-    IN1.off()
-    IN2.on()
+    IN1.on()
+    IN2.off()
 
 def parar():
     print("Parado")
@@ -26,7 +24,6 @@ def parar():
 
 print("Controle motor com fim de curso")
 
-# começa subindo
 sentido = "subindo"
 subir()
 
@@ -49,3 +46,5 @@ while True:
             subir()
 
     sleep(0.05)
+
+    # dESCIDA 17.8
